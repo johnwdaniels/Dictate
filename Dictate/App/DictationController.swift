@@ -5,6 +5,7 @@ import UserNotifications
 enum DictationListenMode: String, CaseIterable, Identifiable {
     case holdToTalk
     case toggle
+    case holdOrTap
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum DictationListenMode: String, CaseIterable, Identifiable {
         switch self {
         case .holdToTalk: "Hold to talk"
         case .toggle: "Toggle"
+        case .holdOrTap: "Hold or tap"
         }
     }
 
@@ -75,6 +77,7 @@ final class DictationController: ObservableObject {
     private var stopRequested = false
     private var recordingStartedAt: Date?
     private var recordingStoppedAt: Date?
+    private var holdOrTap = HoldOrTapShortcut()
     private let notices = DictationNoticePresenter()
 
     func startMonitoringShortcut() {
@@ -83,14 +86,17 @@ final class DictationController: ObservableObject {
                 self?.indicator?.updateLevel(level)
             }
         }
+        // The time is read here, before the hop to the main actor, so a tap is not mistaken for a hold.
         KeyboardShortcuts.onKeyDown(for: .startDictation) { [weak self] in
+            let now = Date()
             Task { @MainActor in
-                self?.shortcutPressed()
+                self?.shortcutPressed(at: now)
             }
         }
         KeyboardShortcuts.onKeyUp(for: .startDictation) { [weak self] in
+            let now = Date()
             Task { @MainActor in
-                self?.shortcutReleased()
+                self?.shortcutReleased(at: now)
             }
         }
         KeyboardShortcuts.onKeyDown(for: .openRecording) { [weak self] in
@@ -112,7 +118,7 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func shortcutPressed() {
+    private func shortcutPressed(at now: Date) {
         switch DictationListenMode.current {
         case .holdToTalk:
             guard phase == .idle else { return }
@@ -126,13 +132,29 @@ final class DictationController: ObservableObject {
             case .processing:
                 return
             }
+        case .holdOrTap:
+            perform(holdOrTap.pressed(at: now, phase: phase))
         }
     }
 
-    private func shortcutReleased() {
-        guard DictationListenMode.current == .holdToTalk else { return }
-        guard phase == .recording else { return }
-        requestStop()
+    private func shortcutReleased(at now: Date) {
+        switch DictationListenMode.current {
+        case .holdToTalk:
+            guard phase == .recording else { return }
+            requestStop()
+        case .toggle:
+            return
+        case .holdOrTap:
+            perform(holdOrTap.released(at: now, phase: phase))
+        }
+    }
+
+    private func perform(_ action: HoldOrTapShortcut.Action) {
+        switch action {
+        case .start: begin()
+        case .stop: requestStop()
+        case .nothing: return
+        }
     }
 
     private func begin() {
