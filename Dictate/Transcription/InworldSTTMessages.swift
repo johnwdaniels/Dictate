@@ -65,12 +65,13 @@ enum InworldSTTMessages {
     }
 
     /// `prompts` is a field of `transcribeConfig`. It is left out when empty.
-    static func startMessage(language: String?, prompts: [String]) throws -> String {
+    static func startMessage(language: String?, prompts: [String], modelId: String) throws -> String {
         let terms = prompts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         let payload = StartMessage(
             transcribeConfig: TranscribeConfig(
+                modelId: modelId,
                 language: languageCode(language),
                 prompts: terms.isEmpty ? nil : terms
             )
@@ -129,10 +130,17 @@ enum InworldSTTMessages {
 
     private static func serverErrorMessage(in object: [String: Any]) -> String? {
         if let error = object["error"] as? [String: Any] {
-            if let message = error["message"] as? String, !message.isEmpty {
-                return message
+            let message = (error["message"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let status = (error["status"] as? String) ?? ""
+            let code = error["code"].map { String(describing: $0) } ?? ""
+            let detail = [status, code].filter { !$0.isEmpty }.joined(separator: " ")
+            if message.isEmpty && detail.isEmpty {
+                return "The transcription service rejected the session."
             }
-            return "The transcription service rejected the session."
+            if message.isEmpty { return detail }
+            if detail.isEmpty { return message }
+            return message + "\n" + detail
         }
         if let error = object["error"] as? String, !error.isEmpty {
             return error
@@ -144,7 +152,7 @@ enum InworldSTTMessages {
     }
 
     private struct TranscribeConfig: Encodable {
-        var modelId = "inworld/inworld-stt-1-preview"
+        var modelId: String
         var audioEncoding = "LINEAR16"
         var sampleRateHertz = 16000
         var numberOfChannels = 1

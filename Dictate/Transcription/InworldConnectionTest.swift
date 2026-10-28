@@ -10,9 +10,32 @@ enum InworldConnectionTest {
         guard let url = InworldSTTMessages.endpoint else {
             throw InworldSTTError.invalidEndpoint
         }
-        let config = try InworldSTTMessages.startMessage(language: language, prompts: [])
+        let models = InworldModelMemory.order(for: trimmed)
+        var lastError: Error = InworldSTTError.server("The transcription model is unavailable.")
+        for (index, model) in models.enumerated() {
+            do {
+                try await probe(apiKey: trimmed, language: language, modelId: model, url: url)
+                InworldModelMemory.remember(model, for: trimmed)
+                return
+            } catch {
+                lastError = error
+                let message = (error as? InworldSTTError).flatMap { detail in
+                    if case .server(let text) = detail { return text }
+                    return nil
+                } ?? ""
+                if index + 1 < models.count, DictationFailure.looksLikeUnavailableModel(message) {
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError
+    }
+
+    private static func probe(apiKey: String, language: String?, modelId: String, url: URL) async throws {
+        let config = try InworldSTTMessages.startMessage(language: language, prompts: [], modelId: modelId)
         var request = URLRequest(url: url)
-        request.setValue(InworldSTTMessages.authorizationValue(apiKey: trimmed), forHTTPHeaderField: "Authorization")
+        request.setValue(InworldSTTMessages.authorizationValue(apiKey: apiKey), forHTTPHeaderField: "Authorization")
 
         let session = URLSession(configuration: .ephemeral)
         let socket = session.webSocketTask(with: request)
@@ -25,11 +48,11 @@ enum InworldConnectionTest {
         do {
             try await socket.send(.string(config))
             try await socket.send(.string(InworldSTTMessages.closeStream))
-            try await watch(socket, key: trimmed)
+            try await watch(socket, key: apiKey)
         } catch let error as InworldSTTError {
             throw error
         } catch {
-            let redacted = redacting(error.localizedDescription, key: trimmed)
+            let redacted = redacting(error.localizedDescription, key: apiKey)
             if DictationFailure.looksLikeRejectedKey(error) || DictationFailure.looksLikeRejectedKey(redacted) {
                 throw InworldSTTError.rejectedKey
             }
@@ -46,6 +69,9 @@ enum InworldConnectionTest {
                     guard let text = text(from: message) else { continue }
                     if case .serverError(let serverMessage) = InworldSTTMessages.parse(text) {
                         let cleaned = redacting(serverMessage, key: key)
+                        if DictationFailure.looksLikeUnavailableModel(cleaned) {
+                            throw InworldSTTError.server(cleaned)
+                        }
                         if DictationFailure.looksLikeRejectedKey(cleaned) {
                             throw InworldSTTError.rejectedKey
                         }

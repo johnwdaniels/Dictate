@@ -219,12 +219,24 @@ final class DictationController: ObservableObject {
             startedSocket = true
             audioAwaited = true
             let stream = try await audioTask.value
-            await MainActor.run {
-                guard self.generation == generation, self.phase == .recording else { return }
+            let ring = await MainActor.run { () -> TimeInterval in
+                guard self.generation == generation, self.phase == .recording else { return 0 }
                 if self.recordingStartedAt == nil {
                     self.recordingStartedAt = Date()
                 }
                 self.indicator?.dictationDidStart()
+                StartChime.play()
+                return StartChime.ringDuration
+            }
+            // The mic is already open. A start sound, and the quiet before it, gets transcribed as dictionary words.
+            if ring > 0 {
+                try? await Task.sleep(for: .seconds(ring + 0.08))
+            }
+            let stillRecording = await MainActor.run {
+                self.generation == generation && self.phase == .recording
+            }
+            if stillRecording {
+                recorder.beginForwarding()
             }
             var sentAudio = false
             for await chunk in stream {

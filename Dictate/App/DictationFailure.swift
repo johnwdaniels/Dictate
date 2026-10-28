@@ -46,7 +46,21 @@ enum DictationFailure {
         return line
     }
 
+    /// A valid key can still be refused for one model. That is not a bad key, so the other model can be tried.
+    static func looksLikeUnavailableModel(_ text: String) -> Bool {
+        let value = text.lowercased()
+        if value.contains("401") || value.contains("unauthor") || value.contains("unauthent") { return false }
+        if value.contains("invalid api key") { return false }
+        if value.contains("model") { return true }
+        if value.contains("not found") || value.contains("not_found") { return true }
+        if value.contains("unavailable") || value.contains("not available") || value.contains("not enabled") { return true }
+        if value.contains("forbidden") || value.contains("403") { return true }
+        if value.contains("permission denied") || value.contains("permission_denied") { return true }
+        return false
+    }
+
     static func looksLikeRejectedKey(_ text: String) -> Bool {
+        if looksLikeUnavailableModel(text) { return false }
         let value = text.lowercased()
         if value.contains("401") { return true }
         if value.contains("unauthor") || value.contains("unauthent") { return true }

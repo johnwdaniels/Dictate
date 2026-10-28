@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdToTalk.rawValue
     @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
+    @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
 
@@ -35,6 +36,7 @@ struct SettingsView: View {
                 apiKeySection
                 shortcutSection
                 indicatorSection
+                startSoundSection
                 languageSection
                 pasteSection
                 permissionsSection
@@ -109,6 +111,26 @@ struct SettingsView: View {
         Section("Indicator") {
             Toggle("Hide the recording indicator", isOn: $hideIndicator)
             Text("A small pill above the Dock while you dictate. It does not take focus.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var startSoundSection: some View {
+        Section("Start sound") {
+            Picker("Start sound", selection: $startSound) {
+                ForEach(StartSound.allCases) { sound in
+                    Text(sound.title).tag(sound.rawValue)
+                }
+            }
+            .onChange(of: startSound) { _, _ in
+                StartChime.play()
+            }
+            Button("Play sound") {
+                StartChime.play()
+            }
+            .disabled(startSound == StartSound.off.rawValue)
+            Text("Plays when transcription starts. Off starts recording in silence.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

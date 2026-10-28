@@ -29,15 +29,25 @@ actor InworldSTTClient {
     private var sessionID = UUID()
     private var phase: Phase = .idle
     private var committed = ""
+    private var sessionKey = ""
     private var endContinuation: CheckedContinuation<Void, Never>?
+    private var startupContinuation: CheckedContinuation<StartupResult, Never>?
+    private var pendingStartupError: Error?
     private var timeoutTask: Task<Void, Never>?
+    private var startupTimeoutTask: Task<Void, Never>?
     private var settleTask: Task<Void, Never>?
 
     private enum Phase {
         case idle
+        case starting
         case streaming
         case closing
         case finished
+    }
+
+    private enum StartupResult {
+        case ready
+        case failed(Error)
     }
 
     init(session: URLSession = .shared) {
@@ -53,24 +63,67 @@ actor InworldSTTClient {
         guard !trimmedKey.isEmpty else {
             throw InworldSTTError.missingAPIKey
         }
+        guard InworldSTTMessages.endpoint != nil else {
+            throw InworldSTTError.invalidEndpoint
+        }
+
+        sessionKey = trimmedKey
+        let remembered = InworldModelMemory.remembered(for: trimmedKey)
+        let models = InworldModelMemory.order(for: trimmedKey)
+        var lastError: Error = InworldSTTError.server("The transcription model is unavailable.")
+
+        for (index, model) in models.enumerated() {
+            try await openSocket(apiKey: trimmedKey, language: language, prompts: prompts, modelId: model)
+            if let pendingStartupError {
+                let error = pendingStartupError
+                self.pendingStartupError = nil
+                lastError = error
+                if canTryNextModel(error, index: index, count: models.count) {
+                    continue
+                }
+                throw error
+            }
+            if remembered == model {
+                phase = .streaming
+                InworldModelMemory.remember(model, for: trimmedKey)
+                return
+            }
+
+            switch await waitForAcceptance() {
+            case .ready:
+                InworldModelMemory.remember(model, for: trimmedKey)
+                return
+            case .failed(let error):
+                lastError = error
+                if canTryNextModel(error, index: index, count: models.count) {
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError
+    }
+
+    private func openSocket(apiKey: String, language: String?, prompts: [String], modelId: String) async throws {
         guard let url = InworldSTTMessages.endpoint else {
             throw InworldSTTError.invalidEndpoint
         }
-        let config = try InworldSTTMessages.startMessage(language: language, prompts: prompts)
+        let config = try InworldSTTMessages.startMessage(language: language, prompts: prompts, modelId: modelId)
         #if DEBUG
         print("[InworldSTT] start \(config)")
         #endif
 
         retireCurrentSocket()
+        pendingStartupError = nil
 
         let sessionID = UUID()
         self.sessionID = sessionID
         committed = ""
         finishedByTimeout = false
-        phase = .streaming
+        phase = .starting
 
         var request = URLRequest(url: url)
-        request.setValue(InworldSTTMessages.authorizationValue(apiKey: trimmedKey), forHTTPHeaderField: "Authorization")
+        request.setValue(InworldSTTMessages.authorizationValue(apiKey: apiKey), forHTTPHeaderField: "Authorization")
 
         let socket = session.webSocketTask(with: request)
         self.socket = socket
@@ -87,6 +140,50 @@ actor InworldSTTClient {
         Task { [weak self] in
             await self?.receiveLoop(sessionID: sessionID)
         }
+    }
+
+    /// A refused model comes back quickly. Silence means the config was accepted, so audio can start.
+    private func waitForAcceptance() async -> StartupResult {
+        if let pendingStartupError {
+            self.pendingStartupError = nil
+            return .failed(pendingStartupError)
+        }
+        let sessionID = self.sessionID
+        return await withCheckedContinuation { continuation in
+            startupContinuation = continuation
+            startupTimeoutTask?.cancel()
+            startupTimeoutTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(700))
+                guard !Task.isCancelled else { return }
+                await self?.startupTimedOut(sessionID: sessionID)
+            }
+        }
+    }
+
+    private func startupTimedOut(sessionID: UUID) {
+        guard sessionID == self.sessionID, phase == .starting else { return }
+        finishStartup(.ready, sessionID: sessionID)
+    }
+
+    private func finishStartup(_ result: StartupResult, sessionID: UUID) {
+        guard sessionID == self.sessionID, let continuation = startupContinuation else { return }
+        startupContinuation = nil
+        startupTimeoutTask?.cancel()
+        startupTimeoutTask = nil
+        switch result {
+        case .ready:
+            phase = .streaming
+        case .failed:
+            phase = .finished
+            teardownSocket()
+        }
+        continuation.resume(returning: result)
+    }
+
+    private func canTryNextModel(_ error: Error, index: Int, count: Int) -> Bool {
+        guard index + 1 < count, let error = error as? InworldSTTError else { return false }
+        guard case .server(let message) = error else { return false }
+        return DictationFailure.looksLikeUnavailableModel(message)
     }
 
     func sendAudio(_ pcm: Data) async {
@@ -126,7 +223,16 @@ actor InworldSTTClient {
                 handle(message, sessionID: sessionID)
             } catch {
                 guard sessionID == self.sessionID else { return }
-                if phase == .closing {
+                if phase == .starting {
+                    let wrapped = InworldSTTError.connectionLost(error.localizedDescription)
+                    if startupContinuation != nil {
+                        finishStartup(.failed(wrapped), sessionID: sessionID)
+                    } else {
+                        pendingStartupError = wrapped
+                        phase = .finished
+                        teardownSocket()
+                    }
+                } else if phase == .closing {
                     complete(timedOut: false, sessionID: sessionID)
                 } else if phase == .streaming {
                     fail(InworldSTTError.connectionLost(error.localizedDescription), sessionID: sessionID)
@@ -164,6 +270,19 @@ actor InworldSTTClient {
             let error: InworldSTTError = DictationFailure.looksLikeRejectedKey(message)
                 ? .rejectedKey
                 : .server(message)
+            if phase == .starting {
+                if startupContinuation != nil {
+                    finishStartup(.failed(error), sessionID: sessionID)
+                } else {
+                    pendingStartupError = error
+                    phase = .finished
+                    teardownSocket()
+                }
+                return
+            }
+            if case .server(let text) = error, DictationFailure.looksLikeUnavailableModel(text) {
+                InworldModelMemory.forget(sessionKey)
+            }
             fail(error, sessionID: sessionID)
         case .ignored:
             break
@@ -226,14 +345,20 @@ actor InworldSTTClient {
     }
 
     private func retireCurrentSocket() {
+        let continuation = startupContinuation
+        startupContinuation = nil
         sessionID = UUID()
         phase = .finished
+        pendingStartupError = nil
         teardownSocket()
+        continuation?.resume(returning: .failed(InworldSTTError.connectionLost("The connection dropped.")))
     }
 
     private func teardownSocket() {
         timeoutTask?.cancel()
         timeoutTask = nil
+        startupTimeoutTask?.cancel()
+        startupTimeoutTask = nil
         settleTask?.cancel()
         settleTask = nil
         let continuation = endContinuation

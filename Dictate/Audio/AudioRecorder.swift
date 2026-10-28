@@ -1,9 +1,11 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Captures the default microphone and yields 16-bit little-endian PCM at 16 kHz, mono.
 final class AudioRecorder: @unchecked Sendable {
     private let engine = AVAudioEngine()
+    private let forwarding = OSAllocatedUnfairLock(initialState: false)
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
     private var continuation: AsyncStream<Data>.Continuation?
@@ -20,6 +22,11 @@ final class AudioRecorder: @unchecked Sendable {
         return try await MainActor.run {
             try self.openEngine()
         }
+    }
+
+    /// Audio captured after `start` is kept on the mic meter only. Call this once the start bell has finished so that sound is not transcribed.
+    func beginForwarding() {
+        forwarding.withLock { $0 = true }
     }
 
     /// Stops the microphone. Safe on the main thread. From any other thread it hops to the main queue without waiting, so it cannot deadlock a thread that the main queue needs.
@@ -63,7 +70,8 @@ final class AudioRecorder: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
             self.publishLevel(buffer)
-            guard let data = self.convert(buffer) else { return }
+            let yieldAudio = self.forwarding.withLock { $0 }
+            guard yieldAudio, let data = self.convert(buffer) else { return }
             self.continuation?.yield(data)
         }
         tapInstalled = true
@@ -79,6 +87,7 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func closeEngine() {
+        forwarding.withLock { $0 = false }
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
