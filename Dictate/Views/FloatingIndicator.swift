@@ -13,7 +13,8 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
     private var screenObserver: NSObjectProtocol?
 
     override init() {
-        panel = IndicatorPanel(contentRect: NSRect(x: 0, y: 0, width: 248, height: 52))
+        // 20 points around the pill leave room for the glass shadow.
+        panel = IndicatorPanel(contentRect: NSRect(x: 0, y: 0, width: 272, height: 76))
         super.init()
         let hosting = ClearHostingView(rootView: FloatingIndicatorPill(model: model))
         hosting.frame = panel.contentView?.bounds ?? .zero
@@ -117,7 +118,7 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
         let size = panel.frame.size
         panel.setFrameOrigin(NSPoint(
             x: visible.midX - size.width / 2,
-            y: visible.minY + 14
+            y: visible.minY + 2
         ))
     }
 
@@ -261,10 +262,12 @@ private struct FloatingIndicatorPill: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .frame(width: 232, height: 36)
-        .background(fill, in: Capsule())
-        .overlay {
-            Capsule().strokeBorder(foreground.opacity(0.08), lineWidth: 1)
-        }
+        .dictateGlass(
+            in: Capsule(),
+            tint: model.phase == .failure ? Color.red.opacity(0.55) : nil,
+            fallback: fill,
+            edge: foreground.opacity(0.08)
+        )
         .scaleEffect(model.presented ? 1 : 0.94)
         .animation(.easeOut(duration: 0.18), value: model.presented)
         .animation(.easeOut(duration: 0.12), value: model.levels)

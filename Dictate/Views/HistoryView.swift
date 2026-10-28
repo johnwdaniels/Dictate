@@ -13,18 +13,16 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                TextField("Search", text: $search)
-                    .textFieldStyle(.roundedBorder)
-                Button("Clear All") {
+        HistoryList(search: trimmedSearch, limit: limit) {
+            limit += HistoryList.pageSize
+        }
+        .searchable(text: $search, placement: .toolbar, prompt: "Search")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Clear All", systemImage: "trash") {
                     confirmClear = true
                 }
-            }
-            .padding(12)
-
-            HistoryList(search: trimmedSearch, limit: limit) {
-                limit += HistoryList.pageSize
+                .help("Clear all history")
             }
         }
         .confirmationDialog(
