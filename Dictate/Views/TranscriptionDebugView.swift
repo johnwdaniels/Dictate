@@ -29,25 +29,25 @@ struct TranscriptionDebugView: View {
             transcriptBox(title: "Committed", text: model.committed, dimmed: false)
             transcriptBox(title: "Interim", text: model.interim, dimmed: true)
 
-            HStack(alignment: .firstTextBaseline) {
-                Button(model.isRecording ? "Stop" : "Record") {
-                    model.toggleRecording(apiKey: apiKey)
-                }
-                .disabled(recordDisabled)
-
-                Spacer()
-
-                Text(model.status)
-                    .font(.callout)
-                    .foregroundStyle(model.failed ? Color.red : Color.secondary)
-                    .multilineTextAlignment(.trailing)
-                    .lineLimit(3)
-            }
+            Text(model.status)
+                .font(.callout)
+                .foregroundStyle(model.failed ? Color.red : Color.secondary)
+                .lineLimit(3)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onDisappear {
             model.stop()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(model.isRecording ? "Stop" : "Record", systemImage: model.isRecording ? "stop.fill" : "record.circle") {
+                    model.toggleRecording(apiKey: apiKey)
+                }
+                .labelStyle(.titleAndIcon)
+                .prominentButton()
+                .disabled(recordDisabled)
+            }
         }
     }
 

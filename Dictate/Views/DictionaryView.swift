@@ -9,155 +9,116 @@ struct DictionaryView: View {
     @Query(sort: \DictionaryReplacement.createdAt, order: .forward) private var replacements: [DictionaryReplacement]
 
     @State private var draft = ""
-    @State private var termSelection: UUID?
     @State private var findDraft = ""
     @State private var replaceDraft = ""
-    @State private var replacementSelection: UUID?
     @State private var importNote = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            termEditor
-            termList
-            Divider()
-            replacementEditor
-            replacementList
+        Form {
+            termsSection
+            replacementsSection
         }
+        .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Import", systemImage: "square.and.arrow.down", action: chooseImportFile)
+                    .help("Import terms from a text file, one per line")
+            }
+        }
     }
 
-    private var termEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("These terms bias recognition toward names and jargon. It is a soft bias, not a guaranteed match.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
+    private var termsSection: some View {
+        Section {
             HStack(spacing: 8) {
-                TextField("Name or jargon", text: $draft)
-                    .textFieldStyle(.roundedBorder)
+                TextField("Add a term", text: $draft, prompt: Text("Name or jargon"))
                     .onSubmit(addTerm)
                 Button("Add", action: addTerm)
                     .disabled(!canAddTerm)
             }
-
             if let termIssue {
                 Text(termIssue)
                     .font(.callout)
                     .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
             if let cleanTitle = DictionaryTermRules.cleanTitle(for: draft) {
                 Button(cleanTitle) {
                     draft = DictionaryTermRules.cleaned(draft)
                 }
                 .buttonStyle(.borderless)
             }
-
-            HStack(spacing: 8) {
-                Text("\(terms.count) / \(DictionaryTermRules.maximum)")
-                    .foregroundStyle(terms.count >= DictionaryTermRules.maximum ? Color.red : Color.secondary)
-                Spacer()
-                Button("Import", action: chooseImportFile)
-            }
-            .font(.callout)
-
             if !importNote.isEmpty {
                 Text(importNote)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .padding(12)
-    }
-
-    @ViewBuilder
-    private var termList: some View {
-        if terms.isEmpty {
-            Text("No terms yet.")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List(selection: $termSelection) {
-                ForEach(orderedTerms) { term in
-                    Text(term.term)
-                        .tag(term.id)
-                        .contextMenu {
-                            Button("Delete", role: .destructive) { delete(term) }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button("Delete", role: .destructive) { delete(term) }
-                        }
-                }
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            .onDeleteCommand(perform: deleteSelectedTerm)
-            .onChange(of: termSelection) { _, newValue in
-                if newValue != nil { replacementSelection = nil }
-            }
-        }
-    }
-
-    private var replacementEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Replacements")
-                .font(.headline)
-            Text("Applied after transcription. Matching ignores case.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                TextField("Find", text: $findDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addReplacement)
-                Text("→")
+            if terms.isEmpty {
+                Text("No terms yet.")
                     .foregroundStyle(.secondary)
-                TextField("Replace with", text: $replaceDraft)
-                    .textFieldStyle(.roundedBorder)
+            }
+            ForEach(orderedTerms) { term in
+                row(term.term) { delete(term) }
+            }
+        } header: {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Terms")
+                Spacer()
+                Text("\(terms.count) of \(DictionaryTermRules.maximum)")
+                    .monospacedDigit()
+                    .foregroundStyle(terms.count >= DictionaryTermRules.maximum ? Color.red : Color.secondary)
+            }
+        } footer: {
+            Text("These terms bias recognition toward names and jargon. It is a soft bias, not a guaranteed match.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var replacementsSection: some View {
+        Section {
+            HStack(spacing: 8) {
+                TextField("Find", text: $findDraft, prompt: Text("Word or phrase"))
+                    .onSubmit(addReplacement)
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("Replace with", text: $replaceDraft, prompt: Text("Replace with"))
+                    .labelsHidden()
                     .onSubmit(addReplacement)
                 Button("Add", action: addReplacement)
                     .disabled(!canAddReplacement)
             }
-
             if let replacementIssue {
                 Text(replacementIssue)
                     .font(.callout)
                     .foregroundStyle(.red)
             }
+            if replacements.isEmpty {
+                Text("No replacements yet.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(orderedReplacements) { rule in
+                row(rowTitle(rule)) { delete(rule) }
+            }
+        } header: {
+            Text("Replacements")
+        } footer: {
+            Text("Applied after transcription. Matching ignores case.")
+                .foregroundStyle(.secondary)
         }
-        .padding(12)
     }
 
-    @ViewBuilder
-    private var replacementList: some View {
-        if replacements.isEmpty {
-            Text("No replacements yet.")
+    private func row(_ title: String, delete: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Button("Delete", systemImage: "minus.circle", role: .destructive, action: delete)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 12)
-        } else {
-            List(selection: $replacementSelection) {
-                ForEach(orderedReplacements) { rule in
-                    Text(rowTitle(rule))
-                        .tag(rule.id)
-                        .contextMenu {
-                            Button("Delete", role: .destructive) { delete(rule) }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button("Delete", role: .destructive) { delete(rule) }
-                        }
-                }
-            }
-            .listStyle(.inset)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 140, maxHeight: 200)
-            .onDeleteCommand(perform: deleteSelectedReplacement)
-            .onChange(of: replacementSelection) { _, newValue in
-                if newValue != nil { termSelection = nil }
-            }
+                .help("Delete")
+        }
+        .contextMenu {
+            Button("Delete", role: .destructive, action: delete)
         }
     }
 
@@ -203,14 +164,8 @@ struct DictionaryView: View {
     }
 
     private func delete(_ term: DictionaryTerm) {
-        if termSelection == term.id { termSelection = nil }
         modelContext.delete(term)
         try? modelContext.save()
-    }
-
-    private func deleteSelectedTerm() {
-        guard let termSelection, let term = terms.first(where: { $0.id == termSelection }) else { return }
-        delete(term)
     }
 
     private func addReplacement() {
@@ -224,14 +179,8 @@ struct DictionaryView: View {
     }
 
     private func delete(_ rule: DictionaryReplacement) {
-        if replacementSelection == rule.id { replacementSelection = nil }
         modelContext.delete(rule)
         try? modelContext.save()
-    }
-
-    private func deleteSelectedReplacement() {
-        guard let replacementSelection, let rule = replacements.first(where: { $0.id == replacementSelection }) else { return }
-        delete(rule)
     }
 
     private func rowTitle(_ rule: DictionaryReplacement) -> String {

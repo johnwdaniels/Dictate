@@ -9,7 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let historyStore: DictationHistoryStore
     private let dictionaryStore: DictionaryStore
     private let floatingIndicator: FloatingIndicator
-    private var mainWindow: NSWindow?
+    private var openWindow: OpenWindowAction?
+    private var openWhenReady = false
+
+    static let mainWindowID = "main"
 
     override init() {
         let container = Self.makeModelContainer()
@@ -45,43 +48,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Opening the app again from Finder, the Dock, or `open` shows the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openMainWindow()
+        return false
+    }
+
+    /// The menu bar icon may appear before or after launch finishes, so a request made first waits for it.
+    func register(openWindow action: OpenWindowAction) {
+        openWindow = action
+        if openWhenReady {
+            openWhenReady = false
+            openMainWindow()
+        }
+    }
+
     func openMainWindow() {
+        guard let openWindow else {
+            openWhenReady = true
+            return
+        }
         // A menu-bar-only app never becomes the active app, so keystrokes never arrive.
         // A normal policy while this window is open lets it take focus and record shortcuts.
         NSApp.setActivationPolicy(.regular)
-        let window = mainWindow ?? makeMainWindow()
-        mainWindow = window
-        window.delegate = self
-        window.makeKeyAndOrderFront(nil)
+        openWindow(id: Self.mainWindowID)
         NSApp.activate()
     }
 
-    private func makeMainWindow() -> NSWindow {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 860),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Dictate"
-        window.backgroundColor = .white
-        window.identifier = NSUserInterfaceItemIdentifier("main")
-        window.contentViewController = NSHostingController(
-            rootView: MainView().modelContainer(modelContainer)
-        )
-        window.minSize = NSSize(width: 880, height: 680)
-        let defaultSize = NSSize(width: 1000, height: 860)
-        window.setContentSize(defaultSize)
-        DispatchQueue.main.async {
-            let size = window.contentRect(forFrameRect: window.frame).size
-            if size.width < defaultSize.width - 8 || size.height < defaultSize.height - 8 {
-                window.setContentSize(defaultSize)
-            }
-        }
-        window.isReleasedWhenClosed = false
-        window.tabbingMode = .disallowed
-        window.center()
-        return window
+    func mainWindowClosed() {
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private static func makeModelContainer() -> ModelContainer {
@@ -102,12 +97,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 configurations: configuration
             )
         }
-    }
-}
-
-extension AppDelegate: NSWindowDelegate {
-    func windowWillClose(_ notification: Notification) {
-        guard notification.object as? NSWindow === mainWindow else { return }
-        NSApp.setActivationPolicy(.accessory)
     }
 }

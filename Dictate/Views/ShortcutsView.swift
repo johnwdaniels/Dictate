@@ -7,96 +7,79 @@ struct ShortcutsView: View {
 
     @State private var phrase = ""
     @State private var expansion = ""
-    @State private var selection: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            editor
-            list
+        Form {
+            newShortcutSection
+            shortcutsSection
         }
+        .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var editor: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Say a short phrase while dictating, and Dictate replaces it with the longer text.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Example")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    Text("You say")
-                        .foregroundStyle(.secondary)
-                    Text("“my email”")
-                    Text("→")
-                        .foregroundStyle(.secondary)
-                    Text("you@example.com")
-                        .foregroundStyle(.tint)
-                }
-                .font(.callout)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-            }
-
+    private var newShortcutSection: some View {
+        Section {
             HStack(spacing: 8) {
-                ForEach(SpokenShortcutRules.ideas) { idea in
-                    Button(idea.title) {
-                        phrase = idea.phrase
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-
-            HStack(spacing: 8) {
-                TextField("Phrase you say", text: $phrase)
-                    .textFieldStyle(.roundedBorder)
+                TextField("Phrase you say", text: $phrase, prompt: Text("my email"))
                     .onSubmit(add)
-                Text("→")
+                Image(systemName: "arrow.right")
                     .foregroundStyle(.secondary)
-                TextField("Text to insert", text: $expansion)
-                    .textFieldStyle(.roundedBorder)
+                    .accessibilityHidden(true)
+                TextField("Text to insert", text: $expansion, prompt: Text("Text to insert"))
+                    .labelsHidden()
                     .onSubmit(add)
                 Button("Add", action: add)
                     .disabled(!canAdd)
             }
-
             if let issue {
                 Text(issue)
                     .font(.callout)
                     .foregroundStyle(.red)
             }
-        }
-        .padding(12)
-    }
-
-    @ViewBuilder
-    private var list: some View {
-        if shortcuts.isEmpty {
-            Text("No shortcuts yet.")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List(selection: $selection) {
-                ForEach(shortcuts) { shortcut in
-                    Text("\(shortcut.phrase) → \(shortcut.expansion)")
-                        .lineLimit(2)
-                        .tag(shortcut.id)
-                        .contextMenu {
-                            Button("Delete") { delete(shortcut) }
-                        }
-                        .swipeActions {
-                            Button("Delete", role: .destructive) { delete(shortcut) }
-                        }
+            HStack(spacing: 8) {
+                ForEach(SpokenShortcutRules.ideas) { idea in
+                    Button(idea.title) {
+                        phrase = idea.phrase
+                    }
+                    .controlSize(.small)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .onDeleteCommand(perform: deleteSelected)
+        } header: {
+            Text("New shortcut")
+        } footer: {
+            Text("Say a short phrase while dictating, and Dictate replaces it with the longer text.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var shortcutsSection: some View {
+        Section("Shortcuts") {
+            if shortcuts.isEmpty {
+                Text("No shortcuts yet.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(shortcuts) { shortcut in
+                HStack(spacing: 8) {
+                    Text(shortcut.phrase)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(shortcut.expansion)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Delete", systemImage: "minus.circle", role: .destructive) {
+                        delete(shortcut)
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Delete")
+                }
+                .contextMenu {
+                    Button("Delete", role: .destructive) { delete(shortcut) }
+                }
+            }
         }
     }
 
@@ -123,13 +106,7 @@ struct ShortcutsView: View {
     }
 
     private func delete(_ shortcut: SpokenShortcut) {
-        if selection == shortcut.id { selection = nil }
         modelContext.delete(shortcut)
         try? modelContext.save()
-    }
-
-    private func deleteSelected() {
-        guard let selection, let shortcut = shortcuts.first(where: { $0.id == selection }) else { return }
-        delete(shortcut)
     }
 }

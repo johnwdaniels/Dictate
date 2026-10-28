@@ -24,41 +24,32 @@ struct InsightsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
+            VStack(alignment: .leading, spacing: 28) {
                 totals
                 chart
                 mostUsed
             }
-            .padding(20)
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.white)
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Range")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Picker("Range", selection: $range) {
-                ForEach(InsightRange.allCases) { item in
-                    Text(item.rawValue).tag(item)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Picker("Range", selection: $range) {
+                    ForEach(InsightRange.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 320)
-            .labelsHidden()
         }
     }
 
     private var totals: some View {
         let saved = InsightsMath.timeSavedLabel(seconds: summary.timeSavedSeconds)
         return HStack(alignment: .firstTextBaseline, spacing: 48) {
-            metric(title: "Time Saved", value: saved.value, unit: saved.unit, caption: "compared to typing")
-            metric(title: "Words Dictated", value: formatted(summary.words), unit: "", caption: "")
+            metric(title: "Time saved", value: saved.value, unit: saved.unit, caption: "compared to typing")
+            metric(title: "Words dictated", value: formatted(summary.words), unit: "", caption: "")
         }
     }
 
@@ -86,13 +77,14 @@ struct InsightsView: View {
 
     private var chart: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(range == .all ? "All Time" : range.rawValue)
+            Text(range == .all ? "All time" : range.rawValue)
                 .font(.headline)
             HStack(alignment: .bottom, spacing: 4) {
                 ForEach(summary.buckets) { bucket in
                     VStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(bucket.words > 0 ? Color.green.opacity(0.55) : Color.primary.opacity(0.08))
+                            .frame(maxWidth: 48)
                             .frame(height: barHeight(bucket.words))
                         Text(bucket.label)
                             .font(.caption2)
@@ -109,7 +101,7 @@ struct InsightsView: View {
 
     private var mostUsed: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Most Used")
+            Text("Most used")
                 .font(.headline)
             if summary.apps.isEmpty {
                 Text(summary.words == 0 ? "No dictations in this range." : "No destination app was recorded for these dictations.")

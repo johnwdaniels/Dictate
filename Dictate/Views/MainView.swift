@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MainView: View {
-    enum Section: String, CaseIterable, Identifiable {
+    enum Page: String, CaseIterable, Identifiable {
         case history = "History"
         case dictionary = "Dictionary"
         case shortcuts = "Shortcuts"
@@ -33,23 +33,24 @@ struct MainView: View {
             }
         }
 
-        static let library: [Section] = [.history, .dictionary, .shortcuts, .insights]
+        static let library: [Page] = [.history, .dictionary, .shortcuts, .insights]
+        static let app: [Page] = [.settings, .debug]
     }
 
-    @State private var section: Section = .history
+    @State private var selection: Page? = .history
     @State private var showOnboarding = false
 
+    private var page: Page { selection ?? .history }
+
     var body: some View {
-        HStack(spacing: 0) {
+        // A native split view gets the floating glass sidebar and toolbar on macOS 26 and later.
+        NavigationSplitView {
             sidebar
-            Divider()
-            VStack(spacing: 0) {
-                header
-                page
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.white)
+        } detail: {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle(page.rawValue)
+                .navigationSubtitle(page.blurb)
         }
         .frame(
             minWidth: 880,
@@ -59,7 +60,6 @@ struct MainView: View {
             idealHeight: 860,
             maxHeight: .infinity
         )
-        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if !UserDefaults.standard.bool(forKey: Onboarding.completeKey) {
                 showOnboarding = true
@@ -71,91 +71,45 @@ struct MainView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(DictateChrome.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                Text("Dictate")
-                    .font(.headline)
-                Spacer(minLength: 0)
+        List(selection: $selection) {
+            Section {
+                ForEach(Page.library) { item in
+                    Label(item.rawValue, systemImage: item.systemImage)
+                        .tag(item)
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 14)
-
-            ForEach(Section.library) { item in
-                sidebarButton(item)
+            Section("App") {
+                ForEach(Page.app) { item in
+                    Label(item.rawValue, systemImage: item.systemImage)
+                        .tag(item)
+                }
             }
-
-            sidebarCaption("App")
-            sidebarButton(.settings)
-            sidebarButton(.debug)
-
-            Spacer(minLength: 0)
         }
-        .frame(width: 220)
-        .frame(maxHeight: .infinity)
-    }
-
-    private func sidebarCaption(_ title: String) -> some View {
-        Text(title)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 4)
-    }
-
-    private func sidebarButton(_ item: Section) -> some View {
-        SidebarItemButton(item: item, isSelected: section == item) {
-            section = item
+        .safeAreaInset(edge: .top, spacing: 0) {
+            brand
         }
+        .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: section.systemImage)
-                .font(.system(size: 22, weight: .semibold))
+    private var brand: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(section.rawValue)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(section.blurb)
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.88))
-            }
+                .frame(width: 24, height: 24)
+                .background(DictateChrome.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text("Dictate")
+                .font(.headline)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
-        .background {
-            ZStack {
-                DictateChrome.gradient
-                RadialGradient(
-                    colors: [Color.white.opacity(0.28), .clear],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: 280
-                )
-                RadialGradient(
-                    colors: [Color(red: 0.18, green: 0.38, blue: 0.92).opacity(0.45), .clear],
-                    center: .bottomTrailing,
-                    startRadius: 20,
-                    endRadius: 320
-                )
-            }
-        }
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
-    private var page: some View {
-        switch section {
+    private var content: some View {
+        switch page {
         case .history:
             HistoryView()
         case .dictionary:
@@ -172,6 +126,7 @@ struct MainView: View {
     }
 }
 
+/// The brand gradient now appears only on the app mark.
 private enum DictateChrome {
     static let orange = Color(red: 0.96, green: 0.46, blue: 0.18)
     static let amber = Color(red: 0.98, green: 0.66, blue: 0.28)
@@ -183,32 +138,4 @@ private enum DictateChrome {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-}
-
-private struct SidebarItemButton: View {
-    let item: MainView.Section
-    let isSelected: Bool
-    let action: () -> Void
-
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Label(item.rawValue, systemImage: item.systemImage)
-                .font(.body.weight(isSelected ? .medium : .regular))
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isSelected ? Color.primary.opacity(0.10) : (hovered ? Color.primary.opacity(0.05) : .clear))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .onHover { hovered = $0 }
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
 }

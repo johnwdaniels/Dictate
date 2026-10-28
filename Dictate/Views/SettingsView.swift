@@ -35,27 +35,20 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            Form {
-                apiKeySection
-                shortcutSection
-                microphoneSection
-                indicatorSection
-                startSoundSection
-                languageSection
-                StyleSection()
-                cleanupSection
-                pasteSection
-                permissionsSection
-                loginSection
-            }
-            .formStyle(.grouped)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
+        Form {
+            apiKeySection
+            shortcutSection
+            microphoneSection
+            indicatorSection
+            startSoundSection
+            languageSection
+            StyleSection()
+            cleanupSection
+            pasteSection
+            permissionsSection
+            loginSection
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.white)
+        .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             loadKey()
