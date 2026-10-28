@@ -2,7 +2,22 @@
 
 Native macOS menu bar dictation app written in Swift and SwiftUI. It requires macOS 14 or later.
 
-## Setup
+## Install
+
+1. Download the latest `Dictate-v….zip` from [Releases](https://github.com/johnwdaniels/Dictate/releases). It runs on Apple silicon and Intel.
+2. Unzip it and move **Dictate.app** to Applications.
+3. Open Dictate. The first time, macOS says it can't verify the developer, because releases are signed ad-hoc instead of with a paid Apple Developer ID. Open **System Settings → Privacy & Security**, scroll to the message about Dictate, click **Open Anyway**, and confirm.
+
+Each release is a new ad-hoc signature, so macOS treats an update as a different app. After updating, turn Dictate off and on again under **Privacy & Security → Accessibility**, then use **Quit and reopen** in Settings. Microphone access may be asked for again.
+
+To publish a release, push a version tag. GitHub Actions runs the tests, builds the app, and attaches the zip to a release named after the tag.
+
+```sh
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+## Build from source
 
 1. Open `Dictate.xcodeproj` in Xcode.
 2. Run the Dictate scheme, or build it from the command line:

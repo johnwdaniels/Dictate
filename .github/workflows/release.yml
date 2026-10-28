@@ -1,0 +1,60 @@
+name: Release
+
+# Pushing a tag such as v1.1.0 builds Dictate, attaches a zipped app to a GitHub release, and names the release after the tag.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Check the tag
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "Tags look like v1.1 or v1.1.0. Got $TAG." >&2
+            exit 1
+          fi
+
+      # Releases are signed ad-hoc, with no Apple Developer ID, so they cost nothing. The README explains the first launch.
+      - name: Test
+        run: >
+          xcodebuild -project Dictate.xcodeproj -scheme Dictate
+          -destination 'platform=macOS,arch=arm64' -derivedDataPath build
+          CODE_SIGN_IDENTITY=- test
+
+      # A generic destination builds for Apple silicon and Intel in one app.
+      - name: Build
+        run: >
+          xcodebuild -project Dictate.xcodeproj -scheme Dictate
+          -destination 'generic/platform=macOS' -derivedDataPath build
+          -configuration Release CODE_SIGN_IDENTITY=-
+          MARKETING_VERSION="${TAG#v}" CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+          build
+
+      - name: Package
+        run: |
+          app=build/Build/Products/Release/Dictate.app
+          codesign --verify --strict "$app"
+          lipo -archs "$app/Contents/MacOS/Dictate"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "Dictate-$TAG.zip"
+          shasum -a 256 "Dictate-$TAG.zip" > "Dictate-$TAG.zip.sha256"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$TAG" "Dictate-$TAG.zip" "Dictate-$TAG.zip.sha256"
+          --title "Dictate $TAG" --generate-notes --verify-tag
