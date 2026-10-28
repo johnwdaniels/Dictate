@@ -11,6 +11,10 @@ struct SettingsView: View {
     @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
+    @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
+    @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
+    @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
+    @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
     @State private var keyStatus: String?
@@ -35,9 +39,12 @@ struct SettingsView: View {
             Form {
                 apiKeySection
                 shortcutSection
+                microphoneSection
                 indicatorSection
                 startSoundSection
                 languageSection
+                StyleSection()
+                cleanupSection
                 pasteSection
                 permissionsSection
                 loginSection
@@ -94,7 +101,7 @@ struct SettingsView: View {
                     Text(mode.title).tag(mode.rawValue)
                 }
             }
-            Text("Shortcuts must include Command, Option, or Control. Hold to talk records while the shortcut is held. Toggle starts and stops on each press.")
+            Text("Shortcuts must include Command, Option, or Control. Hold to talk records while the shortcut is held. Toggle starts and stops on each press. Hold or tap does both: hold to record until you let go, or tap once to start and again to stop.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             LabeledContent("Open recording") {
@@ -102,6 +109,39 @@ struct SettingsView: View {
                     .fixedSize()
             }
             Text("Press once to start. Press the same shortcut again to stop and paste. You do not have to hold it.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var microphoneSection: some View {
+        Section("Microphone") {
+            Picker("Input device", selection: $inputDeviceUID) {
+                Text(inputDevices.defaultName.isEmpty ? "System default" : "System default (\(inputDevices.defaultName))")
+                    .tag("")
+                if !inputDeviceUID.isEmpty, !inputDevices.devices.contains(where: { $0.uid == inputDeviceUID }) {
+                    Text("Saved microphone (not connected)").tag(inputDeviceUID)
+                }
+                ForEach(inputDevices.devices) { device in
+                    Text(device.name).tag(device.uid)
+                }
+            }
+            Text("When the chosen microphone is not connected, Dictate records from the system default.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear(perform: inputDevices.startListening)
+        .onDisappear(perform: inputDevices.stopListening)
+    }
+
+    private var cleanupSection: some View {
+        Section("Clean-up") {
+            Toggle("Remove filler words", isOn: $removeFillers)
+            Text("Removes “um”, “uh” and “you know” when it is set off by commas.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Format numbers", isOn: $formatNumbers)
+            Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
