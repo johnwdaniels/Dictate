@@ -24,7 +24,7 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      # The Debug configuration signs with the local "Dictate Local" certificate, which a runner does not have. Ad-hoc signing is enough to build and test.
+      # Both configurations sign with the local "Dictate Local" certificate, which a runner does not have. Ad-hoc signing is enough to build and test.
       - name: Test
         run: >
           xcodebuild -project Dictate.xcodeproj -scheme Dictate
@@ -35,4 +35,4 @@ jobs:
         run: >
           xcodebuild -project Dictate.xcodeproj -scheme Dictate
           -destination 'platform=macOS,arch=arm64' -derivedDataPath build
-          -configuration Release build
+          -configuration Release CODE_SIGN_IDENTITY=- build
