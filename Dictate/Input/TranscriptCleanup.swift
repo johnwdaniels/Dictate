@@ -17,11 +17,44 @@ enum TranscriptCleanup {
         return UserDefaults.standard.bool(forKey: formatNumbersKey)
     }
 
-    static func clean(_ transcript: String, removeFillers: Bool = removeFillers, formatNumbers: Bool = formatNumbers) -> String {
-        var text = transcript
+    static func clean(
+        _ transcript: String,
+        removeFillers: Bool = removeFillers,
+        formatNumbers: Bool = formatNumbers,
+        language: String? = DictationLanguage.storedCode
+    ) -> String {
+        // Noise, not a filler someone might want to keep, so this ignores the switches.
+        var text = removingStrayCJK(transcript, language: language)
         if removeFillers { text = removingFillers(text) }
         if formatNumbers { text = formattingNumbers(text) }
         return text
+    }
+
+    // MARK: Stray characters
+
+    private static let cjkLanguages: Set<String> = ["zh", "ja", "ko", "yue"]
+    private static let cjk = #"[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]"#
+
+    /// Drops a one- or two-character Chinese, Japanese or Korean token at the start or end of a dictation that is otherwise in Latin script.
+    ///
+    /// The model sometimes writes a hesitation before the first word as 嗯, the Chinese "mm", even with English chosen.
+    /// It is left alone when the dictation language is Chinese, Japanese or Korean, or when the text has no Latin letters.
+    static func removingStrayCJK(_ transcript: String, language: String?) -> String {
+        if let language, cjkLanguages.contains(language.lowercased().components(separatedBy: "-").first ?? "") {
+            return transcript
+        }
+        guard transcript.range(of: #"\p{Latin}"#, options: .regularExpression) != nil,
+              transcript.range(of: cjk, options: .regularExpression) != nil else { return transcript }
+        // Only at the very start or end, where a hesitation lands. A word said on purpose mid-sentence stays.
+        let leading = #"^\s*"# + cjk + #"{1,2}[。、，！？…,.!?]*(\s+|(?=\p{Latin}))"#
+        let trailing = #"\s+"# + cjk + #"{1,2}[。、，！？…,.!?]*\s*$"#
+        var text = replace(leading, in: transcript, with: "")
+        text = replace(trailing, in: text, with: "")
+        text = text.trimmingCharacters(in: .whitespaces)
+        // A dictation that started with the stray token now starts with the next word.
+        let startedWithIt = transcript.range(of: "^" + cjk, options: .regularExpression) != nil
+        guard startedWithIt, let first = text.first, first.isLowercase else { return text }
+        return first.uppercased() + text.dropFirst()
     }
 
     // MARK: Fillers
