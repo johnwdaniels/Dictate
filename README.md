@@ -8,7 +8,7 @@ Native macOS menu bar dictation app written in Swift and SwiftUI. It requires ma
 2. Unzip it and move **Dictate.app** to Applications.
 3. Open Dictate. The first time, macOS says it can't verify the developer, because releases are signed ad-hoc instead of with a paid Apple Developer ID. Open **System Settings → Privacy & Security**, scroll to the message about Dictate, click **Open Anyway**, and confirm.
 
-Each release is a new ad-hoc signature, so macOS treats an update as a different app. After updating, turn Dictate off and on again under **Privacy & Security → Accessibility**, then use **Quit and reopen** in Settings. Microphone access may be asked for again.
+Each release is a new ad-hoc signature, so macOS treats an update as a different app, even though the Accessibility list still shows Dictate turned on. After updating, select Dictate under **Privacy & Security → Accessibility**, remove it with **−**, add it again with **+**, then use **Quit and reopen** in Settings. Turning the switch off and on is often not enough. Microphone access may be asked for again.
 
 To publish a release, push a version tag. GitHub Actions runs the tests, builds the app, and attaches the zip to a release named after the tag.
 

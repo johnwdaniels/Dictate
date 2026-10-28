@@ -69,4 +69,29 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertEqual(TranscriptCleanup.clean(text, removeFillers: true, formatNumbers: true), "Give it 90 days.")
         XCTAssertEqual(TranscriptCleanup.clean(text, removeFillers: false, formatNumbers: false), text)
     }
+
+    // MARK: Stray characters
+
+    private func stray(_ text: String, language: String? = "en") -> String {
+        TranscriptCleanup.removingStrayCJK(text, language: language)
+    }
+
+    func testAHesitationWrittenAsChineseIsDropped() {
+        XCTAssertEqual(stray("嗯。 I haven't ordered any of that."), "I haven't ordered any of that.")
+        XCTAssertEqual(stray("嗯。I haven't ordered any of that."), "I haven't ordered any of that.")
+        XCTAssertEqual(stray("呃 let's go"), "Let's go")
+        XCTAssertEqual(stray("See you at lunch. 嗯。"), "See you at lunch.")
+        XCTAssertEqual(stray("嗯。 I haven't ordered any of that.", language: nil), "I haven't ordered any of that.")
+    }
+
+    func testItRunsEvenWithTheCleanupSwitchesOff() {
+        XCTAssertEqual(TranscriptCleanup.clean("嗯。 Ship it.", removeFillers: false, formatNumbers: false, language: "en"), "Ship it.")
+    }
+
+    func testChineseSaidOnPurposeStays() {
+        XCTAssertEqual(stray("The word 你好 means hello."), "The word 你好 means hello.")
+        XCTAssertEqual(stray("嗯，我觉得可以。"), "嗯，我觉得可以。")
+        XCTAssertEqual(stray("嗯。 I think so.", language: "zh"), "嗯。 I think so.")
+        XCTAssertEqual(stray("你好世界 is a long greeting"), "你好世界 is a long greeting")
+    }
 }

@@ -6,7 +6,7 @@ enum AccessibilityPermission {
         AXIsProcessTrusted()
     }
 
-    static let needsRestartNote = "Turn Dictate on, then quit and reopen. macOS applies Accessibility the next time Dictate starts."
+    static let needsRestartNote = "Turn Dictate on, then quit and reopen. macOS applies Accessibility the next time Dictate starts. If Dictate is already on after an update, remove it with − and add it again, since the switch belongs to the earlier version."
 
     private static var relaunching = false
 

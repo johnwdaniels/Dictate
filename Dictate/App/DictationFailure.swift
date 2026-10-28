@@ -6,7 +6,7 @@ enum DictationFailure {
     static let rejectedKey = "The API key was rejected. Check it in Settings."
     static let connectionDropped = "The connection dropped. Try again."
     static let microphoneDenied = "Allow Microphone access for Dictate in System Settings."
-    static let accessibilityDenied = "Allow Accessibility for Dictate in System Settings."
+    static let accessibilityDenied = "Allow Accessibility for Dictate in System Settings. If Dictate is already on there, remove it with −, add it again, then quit and reopen Dictate."
     static let emptyTranscript = "No speech was transcribed."
     static let timedOut = "Transcription timed out. Try again."
     static let generic = "Something went wrong. Try again."
