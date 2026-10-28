@@ -33,6 +33,9 @@ final class ShortcutRecorderBox: NSStackView {
     private var globalMonitor: Any?
     private var isRecording = false
     private var shortcutBeforeRecording: KeyboardShortcuts.Shortcut?
+    private var modifierBeforeRecording: ModifierKey?
+    /// A modifier pressed alone during recording. It becomes the shortcut if it is released before any other key.
+    private var pendingModifierCode: Int?
     private var rejectionTask: Task<Void, Never>?
 
     init(name: KeyboardShortcuts.Name) {
@@ -54,7 +57,7 @@ final class ShortcutRecorderBox: NSStackView {
         recordButton.sendAction(on: [.leftMouseDown])
         recordButton.font = .systemFont(ofSize: NSFont.systemFontSize)
         recordButton.title = "Record shortcut"
-        recordButton.toolTip = "Click, then press a shortcut that includes Command, Option, or Control."
+        recordButton.toolTip = "Click, then press a shortcut that includes Command, Option, or Control, or tap a right-side modifier such as Right Option on its own."
         recordButton.setAccessibilityLabel("Dictation shortcut")
         recordButton.translatesAutoresizingMaskIntoConstraints = false
         recordButton.widthAnchor.constraint(equalToConstant: 150).isActive = true
@@ -95,9 +98,10 @@ final class ShortcutRecorderBox: NSStackView {
     func refreshIfIdle() {
         guard !isRecording else { return }
         let shortcut = KeyboardShortcuts.getShortcut(for: name)
-        recordButton.title = shortcut?.description ?? "Record shortcut"
+        let modifier = ModifierKey.stored(for: name)
+        recordButton.title = modifier?.title ?? shortcut?.description ?? "Record shortcut"
         recordButton.bezelColor = nil
-        clearButton.isHidden = shortcut == nil
+        clearButton.isHidden = shortcut == nil && modifier == nil
         invalidateIntrinsicContentSize()
     }
 
@@ -122,7 +126,9 @@ final class ShortcutRecorderBox: NSStackView {
             stopMonitor()
             isRecording = false
             shortcutBeforeRecording = nil
+            modifierBeforeRecording = nil
             KeyboardShortcuts.setShortcut(nil, for: name)
+            ModifierKey.store(nil, for: name)
             refreshIfIdle()
         }
     }
@@ -130,8 +136,11 @@ final class ShortcutRecorderBox: NSStackView {
     private func begin() {
         rejectionTask?.cancel()
         shortcutBeforeRecording = KeyboardShortcuts.getShortcut(for: name)
+        modifierBeforeRecording = ModifierKey.stored(for: name)
+        pendingModifierCode = nil
         // Unregister first so the current hotkey cannot swallow the combination being recorded.
         KeyboardShortcuts.setShortcut(nil, for: name)
+        ModifierKey.store(nil, for: name)
         isRecording = true
         recordButton.title = "Press shortcut"
         recordButton.bezelColor = .controlAccentColor
@@ -146,7 +155,9 @@ final class ShortcutRecorderBox: NSStackView {
         stopMonitor()
         isRecording = false
         KeyboardShortcuts.setShortcut(shortcutBeforeRecording, for: name)
+        ModifierKey.store(modifierBeforeRecording, for: name)
         shortcutBeforeRecording = nil
+        modifierBeforeRecording = nil
         refreshIfIdle()
     }
 
@@ -155,7 +166,20 @@ final class ShortcutRecorderBox: NSStackView {
         stopMonitor()
         isRecording = false
         shortcutBeforeRecording = nil
+        modifierBeforeRecording = nil
+        ModifierKey.store(nil, for: name)
         KeyboardShortcuts.setShortcut(shortcut, for: name)
+        refreshIfIdle()
+    }
+
+    private func commit(_ modifier: ModifierKey) {
+        rejectionTask?.cancel()
+        stopMonitor()
+        isRecording = false
+        shortcutBeforeRecording = nil
+        modifierBeforeRecording = nil
+        KeyboardShortcuts.setShortcut(nil, for: name)
+        ModifierKey.store(modifier, for: name)
         refreshIfIdle()
     }
 
@@ -167,13 +191,23 @@ final class ShortcutRecorderBox: NSStackView {
     }
 
     private func installMonitor() {
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
+            if event.type == .flagsChanged {
+                let input = ModifierInput(event)
+                MainActor.assumeIsolated { self.handleModifier(input) }
+                return event
+            }
             return self.receive(KeyPress(event))
         }
         // Keys often stay with the previously active app. A global monitor still sees them.
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return }
+            if event.type == .flagsChanged {
+                let input = ModifierInput(event)
+                MainActor.assumeIsolated { self.handleModifier(input) }
+                return
+            }
             let press = KeyPress(event)
             MainActor.assumeIsolated {
                 self.handle(press)
@@ -209,7 +243,33 @@ final class ShortcutRecorderBox: NSStackView {
         }
     }
 
+    /// A right-side modifier pressed and released alone becomes the shortcut. A left-side one gets a hint.
+    private func handleModifier(_ input: ModifierInput) {
+        guard isRecording else { return }
+        let isRight = ModifierKey(keyCode: input.keyCode) != nil
+        guard isRight || ModifierKey.leftKeyCodes.contains(input.keyCode) else { return }
+        let down: Bool
+        if let key = ModifierKey(keyCode: input.keyCode) {
+            down = key.isDown(flags: input.flags)
+        } else {
+            down = !NSEvent.ModifierFlags(rawValue: input.flags)
+                .intersection([.command, .option, .control, .shift]).isEmpty
+        }
+        if down {
+            pendingModifierCode = input.keyCode
+            return
+        }
+        guard pendingModifierCode == input.keyCode else { return }
+        pendingModifierCode = nil
+        if let key = ModifierKey(keyCode: input.keyCode) {
+            commit(key)
+        } else {
+            reject("Use a right-side key")
+        }
+    }
+
     private func handle(_ press: KeyPress) {
+        pendingModifierCode = nil
         guard isRecording, !press.isRepeat else { return }
 
         if !press.hasNonShiftModifier {
