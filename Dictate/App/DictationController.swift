@@ -331,7 +331,8 @@ final class DictationController: ObservableObject {
             report(outcome.timedOut ? DictationFailure.timedOut : DictationFailure.emptyTranscript)
             return
         }
-        let replaced = (dictionary?.applyReplacements(to: raw) ?? raw)
+        let cleaned = TranscriptCleanup.clean(raw)
+        let replaced = (dictionary?.applyReplacements(to: cleaned) ?? cleaned)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !replaced.isEmpty else {
             report(DictationFailure.emptyTranscript)

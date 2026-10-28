@@ -12,6 +12,8 @@ struct SettingsView: View {
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
+    @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
+    @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
     @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
@@ -42,6 +44,7 @@ struct SettingsView: View {
                 startSoundSection
                 languageSection
                 StyleSection()
+                cleanupSection
                 pasteSection
                 permissionsSection
                 loginSection
@@ -129,6 +132,19 @@ struct SettingsView: View {
         }
         .onAppear(perform: inputDevices.startListening)
         .onDisappear(perform: inputDevices.stopListening)
+    }
+
+    private var cleanupSection: some View {
+        Section("Clean-up") {
+            Toggle("Remove filler words", isOn: $removeFillers)
+            Text("Removes “um”, “uh” and “you know” when it is set off by commas.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Format numbers", isOn: $formatNumbers)
+            Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var indicatorSection: some View {
