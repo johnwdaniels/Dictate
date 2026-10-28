@@ -27,6 +27,18 @@ final class InworldModelTests: XCTestCase {
         XCTAssertTrue(DictationFailure.looksLikeRejectedKey("invalid api key"))
     }
 
+    func testARememberedModelIsReusedWithoutAnotherDefaultsWrite() {
+        let key = "model-memory-\(UUID().uuidString)"
+        defer { InworldModelMemory.forget(key) }
+
+        XCTAssertNil(InworldModelMemory.remembered(for: key))
+        InworldModelMemory.remember(InworldModelMemory.preview, for: key)
+        InworldModelMemory.remember(InworldModelMemory.preview, for: key)
+
+        XCTAssertEqual(InworldModelMemory.remembered(for: key), InworldModelMemory.preview)
+        XCTAssertEqual(InworldModelMemory.order(for: key).first, InworldModelMemory.preview)
+    }
+
     func testTheShownServerLineOmitsTheStatusDetail() {
         let shown = DictationFailure.serverMessage("Permission denied\nPERMISSION_DENIED 7")
 

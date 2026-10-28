@@ -127,13 +127,9 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, !self.isEnabled else { return }
-                self.hideTask?.cancel()
-                self.model.presented = false
-                self.model.phase = .idle
-                self.panel.alphaValue = 0
-                self.panel.orderOut(nil)
+            // `MainActor.assumeIsolated` faults on macOS 26 when AppKit delivers this on the main thread. Hop instead.
+            Task { @MainActor in
+                self?.hideIfDisabled()
             }
         }
         screenObserver = NotificationCenter.default.addObserver(
@@ -141,11 +137,20 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 guard let self, self.panel.isVisible else { return }
                 self.position()
             }
         }
+    }
+
+    private func hideIfDisabled() {
+        guard !isEnabled else { return }
+        hideTask?.cancel()
+        model.presented = false
+        model.phase = .idle
+        panel.alphaValue = 0
+        panel.orderOut(nil)
     }
 
     private static func short(_ message: String) -> String {
