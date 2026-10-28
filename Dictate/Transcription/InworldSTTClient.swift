@@ -30,6 +30,7 @@ actor InworldSTTClient {
     private var phase: Phase = .idle
     private var committed = ""
     private var sessionKey = ""
+    private var prompts: [String] = []
     private var endContinuation: CheckedContinuation<Void, Never>?
     private var startupContinuation: CheckedContinuation<StartupResult, Never>?
     private var pendingStartupError: Error?
@@ -68,6 +69,7 @@ actor InworldSTTClient {
         }
 
         sessionKey = trimmedKey
+        self.prompts = prompts
         let remembered = InworldModelMemory.remembered(for: trimmedKey)
         let models = InworldModelMemory.order(for: trimmedKey)
         var lastError: Error = InworldSTTError.server("The transcription model is unavailable.")
@@ -258,8 +260,14 @@ actor InworldSTTClient {
         case .interim(let transcript):
             onInterim(transcript)
         case .final(let transcript):
-            committed = InworldSTTMessages.appending(committed, transcript)
-            onFinal(transcript)
+            let kept = PromptEchoFilter.filter(transcript, terms: prompts, isFirstSegment: committed.isEmpty)
+            #if DEBUG
+            if kept != transcript {
+                print("[InworldSTT] dropped echoed dictionary terms: \(transcript)")
+            }
+            #endif
+            committed = InworldSTTMessages.appending(committed, kept)
+            onFinal(kept)
             scheduleSettleIfClosing(sessionID: sessionID)
         case .diagnostic(let name):
             logDiagnostic(name, raw: text)
