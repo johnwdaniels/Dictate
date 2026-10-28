@@ -2,9 +2,10 @@ import AVFoundation
 import Foundation
 import os
 
-/// Captures the default microphone and yields 16-bit little-endian PCM at 16 kHz, mono.
+/// Captures the microphone chosen in Settings, or the system default, and yields 16-bit little-endian PCM at 16 kHz, mono.
 final class AudioRecorder: @unchecked Sendable {
     private let engine = AVAudioEngine()
+    private var inputDeviceID: AudioDeviceID?
     private let forwarding = OSAllocatedUnfairLock(initialState: false)
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
@@ -49,6 +50,7 @@ final class AudioRecorder: @unchecked Sendable {
 
     private func openEngine() throws -> AsyncStream<Data> {
         closeEngine()
+        selectInputDevice()
 
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -84,6 +86,24 @@ final class AudioRecorder: @unchecked Sendable {
             throw error
         }
         return stream
+    }
+
+    /// Points the engine at the chosen microphone. The engine is reused, so the system default is also set explicitly.
+    private func selectInputDevice() {
+        guard let wanted = InputDevices.resolvedInputID(), wanted != inputDeviceID,
+              let unit = engine.inputNode.audioUnit else { return }
+        var id = wanted
+        let status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else { return }
+        inputDeviceID = wanted
+        engine.reset()
     }
 
     private func closeEngine() {

@@ -11,6 +11,8 @@ struct SettingsView: View {
     @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
+    @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
+    @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
     @State private var keyStatus: String?
@@ -35,6 +37,7 @@ struct SettingsView: View {
             Form {
                 apiKeySection
                 shortcutSection
+                microphoneSection
                 indicatorSection
                 startSoundSection
                 languageSection
@@ -105,6 +108,26 @@ struct SettingsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var microphoneSection: some View {
+        Section("Microphone") {
+            Picker("Input device", selection: $inputDeviceUID) {
+                Text(inputDevices.defaultName.isEmpty ? "System default" : "System default (\(inputDevices.defaultName))")
+                    .tag("")
+                if !inputDeviceUID.isEmpty, !inputDevices.devices.contains(where: { $0.uid == inputDeviceUID }) {
+                    Text("Saved microphone (not connected)").tag(inputDeviceUID)
+                }
+                ForEach(inputDevices.devices) { device in
+                    Text(device.name).tag(device.uid)
+                }
+            }
+            Text("When the chosen microphone is not connected, Dictate records from the system default.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear(perform: inputDevices.startListening)
+        .onDisappear(perform: inputDevices.stopListening)
     }
 
     private var indicatorSection: some View {
