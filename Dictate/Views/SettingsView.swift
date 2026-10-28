@@ -41,6 +41,7 @@ struct SettingsView: View {
                 indicatorSection
                 startSoundSection
                 languageSection
+                StyleSection()
                 pasteSection
                 permissionsSection
                 loginSection

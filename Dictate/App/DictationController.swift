@@ -331,12 +331,14 @@ final class DictationController: ObservableObject {
             report(outcome.timedOut ? DictationFailure.timedOut : DictationFailure.emptyTranscript)
             return
         }
-        let transcript = (dictionary?.applyReplacements(to: raw) ?? raw)
+        let replaced = (dictionary?.applyReplacements(to: raw) ?? raw)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else {
+        guard !replaced.isEmpty else {
             report(DictationFailure.emptyTranscript)
             return
         }
+        let target = FrontmostAppTracker.shared.target()
+        let transcript = AppStyle.styled(replaced, bundleID: target?.bundleID ?? "")
         indicator?.dictationDidSucceed()
         let insertion = PastePreferences.insertionText(from: transcript)
         Task { @MainActor in
@@ -352,7 +354,6 @@ final class DictationController: ObservableObject {
         recordingStartedAt = nil
         recordingStoppedAt = nil
         do {
-            let target = FrontmostAppTracker.shared.target()
             try history?.saveToHistory(
                 transcript,
                 durationSeconds: duration,
