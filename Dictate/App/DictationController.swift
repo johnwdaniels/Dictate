@@ -78,6 +78,7 @@ final class DictationController: ObservableObject {
     private var recordingStartedAt: Date?
     private var recordingStoppedAt: Date?
     private var holdOrTap = HoldOrTapShortcut()
+    private var modifierMonitors: [ModifierShortcutMonitor] = []
     private let notices = DictationNoticePresenter()
 
     func startMonitoringShortcut() {
@@ -104,6 +105,20 @@ final class DictationController: ObservableObject {
                 self?.openRecordingPressed()
             }
         }
+        // A lone right-side modifier, such as Right Option, can be either shortcut.
+        let dictationModifier = ModifierShortcutMonitor(
+            name: .startDictation,
+            onPress: { [weak self] time in self?.shortcutPressed(at: time) },
+            onRelease: { [weak self] time in self?.shortcutReleased(at: time) }
+        )
+        let openRecordingModifier = ModifierShortcutMonitor(
+            name: .openRecording,
+            onPress: { [weak self] _ in self?.openRecordingPressed() },
+            onRelease: { _ in }
+        )
+        dictationModifier.start()
+        openRecordingModifier.start()
+        modifierMonitors = [dictationModifier, openRecordingModifier]
     }
 
     /// Starts a recording that stays open after the keys are released. The next press stops it and pastes.

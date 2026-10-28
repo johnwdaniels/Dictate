@@ -94,7 +94,7 @@ struct SettingsView: View {
                     Text(mode.title).tag(mode.rawValue)
                 }
             }
-            Text("Shortcuts must include Command, Option, or Control. Hold to talk records while the shortcut is held. Toggle starts and stops on each press. Hold or tap does both: hold to record until you let go, or tap once to start and again to stop.")
+            Text("Shortcuts must include Command, Option, or Control, or be a right-side modifier on its own, such as Right Option. Hold to talk records while the shortcut is held. Toggle starts and stops on each press. Hold or tap does both: hold to record until you let go, or tap once to start and again to stop.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             LabeledContent("Open recording") {
