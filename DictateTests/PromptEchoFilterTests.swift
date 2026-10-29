@@ -42,6 +42,47 @@ final class PromptEchoFilterTests: XCTestCase {
         XCTAssertEqual(filter("inworld... gtm sage? RYDER!"), "")
     }
 
+    func testALabeledListIsRemovedAndSpeechAfterItStays() {
+        let terms = ["Kylan", "Cheryl", "Karim", "Inworld", "TTS"]
+        XCTAssertEqual(
+            PromptEchoFilter.filter(
+                "Expected terms: Kylan, Cheryl, Karim, Inworld, T I bet they would. Those stems are probably everywhere",
+                terms: terms,
+                isFirstSegment: true
+            ),
+            "I bet they would. Those stems are probably everywhere"
+        )
+    }
+
+    func testALabeledListAloneIsDropped() {
+        XCTAssertEqual(filter("Expected terms: Adele, Inworld, Ryder.", first: true), "")
+        XCTAssertEqual(filter("Expected terms:", first: true), "")
+    }
+
+    func testALabeledListAfterSpeechIsTrimmed() {
+        XCTAssertEqual(filter("Ship it today. Expected terms: Ryder, Superhuman, Sup", first: true), "Ship it today.")
+    }
+
+    func testAWordAfterTheListWithoutACommaStays() {
+        XCTAssertEqual(filter("Expected terms: Ryder, Inworld I think so.", first: true), "I think so.")
+    }
+
+    func testALabelFollowedBySpeechWithNoTermsStays() {
+        XCTAssertEqual(filter("Expected terms: net 30, annual prepay.", first: true), "Expected terms: net 30, annual prepay.")
+    }
+
+    func testPunctuationAfterTheListGoesWithIt() {
+        XCTAssertEqual(filter("Expected terms: Ryder, Adele. Let's go.", first: true), "Let's go.")
+    }
+
+    func testAMultiWordTermCutOffPartwayIsRemoved() {
+        XCTAssertEqual(filter("Expected terms: Ryder, GTM Sa I'll send it.", first: true), "I'll send it.")
+    }
+
+    func testSpokenExpectedTermsWithoutALabelStays() {
+        XCTAssertEqual(filter("The expected terms are Ryder and Adele.", first: true), "The expected terms are Ryder and Adele.")
+    }
+
     func testNoTermsMeansNoChange() {
         XCTAssertEqual(PromptEchoFilter.filter("Inworld Ryder", terms: [], isFirstSegment: false), "Inworld Ryder")
     }
