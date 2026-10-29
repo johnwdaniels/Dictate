@@ -83,6 +83,7 @@ final class DictationController: ObservableObject {
     /// starting, but nothing has been played or shown yet.
     private var armedSession = false
     private var gate = StartGate()
+    private var liveTranscript = LiveTranscript()
     private let notices = DictationNoticePresenter()
 
     func startMonitoringShortcut() {
@@ -213,6 +214,7 @@ final class DictationController: ObservableObject {
         recordingStartedAt = nil
         recordingStoppedAt = nil
         interimText = ""
+        liveTranscript = LiveTranscript()
         generation = UUID()
         gate = StartGate(keepFrom: armedAt?.timeIntervalSinceReferenceDate)
         armedSession = armedAt != nil
@@ -285,7 +287,11 @@ final class DictationController: ObservableObject {
                     self?.publishInterim(text, generation: generation)
                 }
             },
-            onFinal: { _ in },
+            onFinal: { [weak self] text in
+                Task { @MainActor in
+                    self?.publishFinal(text, generation: generation)
+                }
+            },
             onComplete: { text in
                 outcome.setText(text)
             },
@@ -369,6 +375,15 @@ final class DictationController: ObservableObject {
 
     private func publishInterim(_ text: String, generation: UUID) {
         guard self.generation == generation, phase == .recording || phase == .processing else { return }
+        show(liveTranscript.showing(partial: text))
+    }
+
+    private func publishFinal(_ text: String, generation: UUID) {
+        guard self.generation == generation, phase == .recording || phase == .processing else { return }
+        show(liveTranscript.finish(text))
+    }
+
+    private func show(_ text: String) {
         interimText = text
         indicator?.updateInterimText(text)
     }
