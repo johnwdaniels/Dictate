@@ -21,8 +21,8 @@ enum DictationListenMode: String, CaseIterable, Identifiable {
     static let storageKey = "dictationListenMode"
 
     static var current: DictationListenMode {
-        let raw = UserDefaults.standard.string(forKey: storageKey) ?? DictationListenMode.holdToTalk.rawValue
-        return DictationListenMode(rawValue: raw) ?? .holdToTalk
+        let raw = UserDefaults.standard.string(forKey: storageKey) ?? DictationListenMode.holdOrTap.rawValue
+        return DictationListenMode(rawValue: raw) ?? .holdOrTap
     }
 }
 

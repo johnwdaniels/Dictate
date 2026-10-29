@@ -5,7 +5,7 @@ import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdToTalk.rawValue
+    @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdOrTap.rawValue
     @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
     @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
