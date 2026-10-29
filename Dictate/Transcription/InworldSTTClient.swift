@@ -31,6 +31,8 @@ actor InworldSTTClient {
     private var committed = ""
     private var sessionKey = ""
     private var prompts: [String] = []
+    /// Words that arrive while the socket connects, such as names read from the screen.
+    private var morePrompts: (@Sendable () async -> [String])?
     private var endContinuation: CheckedContinuation<Void, Never>?
     private var startupContinuation: CheckedContinuation<StartupResult, Never>?
     private var pendingStartupError: Error?
@@ -59,7 +61,13 @@ actor InworldSTTClient {
         phase == .streaming
     }
 
-    func start(apiKey: String, language: String?, prompts: [String]) async throws {
+    /// `morePrompts` is awaited after the socket starts connecting, so it overlaps the handshake.
+    func start(
+        apiKey: String,
+        language: String?,
+        prompts: [String],
+        morePrompts: (@Sendable () async -> [String])? = nil
+    ) async throws {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
             throw InworldSTTError.missingAPIKey
@@ -70,12 +78,13 @@ actor InworldSTTClient {
 
         sessionKey = trimmedKey
         self.prompts = prompts
+        self.morePrompts = morePrompts
         let remembered = InworldModelMemory.remembered(for: trimmedKey)
         let models = InworldModelMemory.order(for: trimmedKey)
         var lastError: Error = InworldSTTError.server("The transcription model is unavailable.")
 
         for (index, model) in models.enumerated() {
-            try await openSocket(apiKey: trimmedKey, language: language, prompts: prompts, modelId: model)
+            try await openSocket(apiKey: trimmedKey, language: language, modelId: model)
             if let pendingStartupError {
                 let error = pendingStartupError
                 self.pendingStartupError = nil
@@ -106,14 +115,10 @@ actor InworldSTTClient {
         throw lastError
     }
 
-    private func openSocket(apiKey: String, language: String?, prompts: [String], modelId: String) async throws {
+    private func openSocket(apiKey: String, language: String?, modelId: String) async throws {
         guard let url = InworldSTTMessages.endpoint else {
             throw InworldSTTError.invalidEndpoint
         }
-        let config = try InworldSTTMessages.startMessage(language: language, prompts: prompts, modelId: modelId)
-        #if DEBUG
-        print("[InworldSTT] start \(config)")
-        #endif
 
         retireCurrentSocket()
         pendingStartupError = nil
@@ -131,7 +136,17 @@ actor InworldSTTClient {
         self.socket = socket
         socket.resume()
 
+        // The handshake is under way, so waiting for these words here costs little or nothing.
+        if let morePrompts {
+            self.morePrompts = nil
+            prompts = Self.merged(prompts, await morePrompts())
+        }
+
         do {
+            let config = try InworldSTTMessages.startMessage(language: language, prompts: prompts, modelId: modelId)
+            #if DEBUG
+            print("[InworldSTT] start \(config)")
+            #endif
             try await socket.send(.string(config))
         } catch {
             phase = .finished
@@ -142,6 +157,16 @@ actor InworldSTTClient {
         Task { [weak self] in
             await self?.receiveLoop(sessionID: sessionID)
         }
+    }
+
+    /// Dictionary words first, then the rest, without repeats, up to the dictionary's own limit.
+    static func merged(_ first: [String], _ more: [String]) -> [String] {
+        var seen = Set(first.map { $0.lowercased() })
+        var result = first
+        for term in more where result.count < DictionaryTermRules.maximum && seen.insert(term.lowercased()).inserted {
+            result.append(term)
+        }
+        return result
     }
 
     /// A refused model comes back quickly. Silence means the config was accepted, so audio can start.

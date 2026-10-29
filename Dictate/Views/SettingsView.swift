@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
     @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
     @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
+    @AppStorage(ScreenContext.enabledKey) private var useScreenNames = true
     @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
@@ -142,6 +143,10 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             Toggle("Format numbers", isOn: $formatNumbers)
             Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Spell names the way the screen shows them", isOn: $useScreenNames)
+            Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

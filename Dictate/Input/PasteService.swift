@@ -41,7 +41,8 @@ enum PasteServiceError: LocalizedError {
 /// Inserts text into the focused text field by pasting, then puts the clipboard back.
 @MainActor
 enum PasteService {
-    static func paste(_ text: String) async throws {
+    /// `names` keep their capital when the dictation lands mid-sentence.
+    static func paste(_ text: String, names: Set<String> = []) async throws {
         try ensureTrusted()
 
         let snapshot = PasteboardSnapshot.capture()
@@ -51,7 +52,7 @@ enum PasteService {
                 try await Task.sleep(for: .milliseconds(100))
             }
             let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-            try writeToPasteboard(SmartSpacing.prepare(text, bundleID: bundleID))
+            try writeToPasteboard(SmartSpacing.prepare(text, bundleID: bundleID, names: names))
             try postCommandV()
             try await Task.sleep(for: .milliseconds(150))
             snapshot.restore()

@@ -32,6 +32,14 @@ final class FrontmostAppTracker {
         return (name, chosen.bundleIdentifier ?? "")
     }
 
+    /// The process of the app being dictated into, for reading its window.
+    func targetProcessID() -> pid_t? {
+        let front = NSWorkspace.shared.frontmostApplication
+        let chosen = isDictate(front) ? lastOther : front
+        guard let chosen, !isDictate(chosen) else { return nil }
+        return chosen.processIdentifier
+    }
+
     private func note(_ app: NSRunningApplication?) {
         guard let app, !isDictate(app) else { return }
         lastOther = app
