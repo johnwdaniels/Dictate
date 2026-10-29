@@ -25,6 +25,7 @@ enum TranscriptCleanup {
     ) -> String {
         // Noise, not a filler someone might want to keep, so this ignores the switches.
         var text = removingStrayCJK(transcript, language: language)
+        text = removingStrayLetter(text, language: language)
         if removeFillers { text = removingFillers(text) }
         if formatNumbers { text = formattingNumbers(text) }
         return text
@@ -57,9 +58,26 @@ enum TranscriptCleanup {
         return first.uppercased() + text.dropFirst()
     }
 
+    /// Drops a lone letter with a period at the start of an English dictation, such as "É." from a hesitation before
+    /// the first word. "I" and "A" are words, so they stay. Runs only for English or auto-detect, and only when the rest
+    /// is plain ASCII, so a Portuguese "É." (it is) is kept.
+    static func removingStrayLetter(_ transcript: String, language: String?) -> String {
+        if let language, !language.lowercased().hasPrefix("en") { return transcript }
+        let pattern = #"^\s*([\p{L}])[.!?…。]+\s+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: transcript, range: NSRange(transcript.startIndex..., in: transcript)),
+              let letterRange = Range(match.range(at: 1), in: transcript),
+              let whole = Range(match.range, in: transcript) else { return transcript }
+        let letter = transcript[letterRange].uppercased()
+        guard letter != "I", letter != "A" else { return transcript }
+        let rest = String(transcript[whole.upperBound...])
+        guard !rest.isEmpty, rest.unicodeScalars.allSatisfy(\.isASCII), rest.contains(where: \.isLetter) else { return transcript }
+        return rest
+    }
+
     // MARK: Fillers
 
-    private static let fillers: Set<String> = ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm"]
+    private static let fillers: Set<String> = ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "eh", "hm", "hmm", "mm"]
 
     /// Drops "um" and similar sounds, and "you know" only when commas set it off, so "everything you know" stays.
     static func removingFillers(_ transcript: String) -> String {

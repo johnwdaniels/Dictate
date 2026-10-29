@@ -94,4 +94,22 @@ final class TranscriptCleanupTests: XCTestCase {
         XCTAssertEqual(stray("嗯。 I think so.", language: "zh"), "嗯。 I think so.")
         XCTAssertEqual(stray("你好世界 is a long greeting"), "你好世界 is a long greeting")
     }
+
+    func testAHesitationWrittenAsALoneLetterIsDropped() {
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("É. I like owner.", language: "en"), "I like owner.")
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("Ö. Ship it.", language: nil), "Ship it.")
+        XCTAssertEqual(TranscriptCleanup.clean("É. I like owner.", removeFillers: false, formatNumbers: false, language: "en"), "I like owner.")
+    }
+
+    func testRealOneLetterWordsAndOtherLanguagesStay() {
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("I. Agree with that.", language: "en"), "I. Agree with that.")
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("A. Then B.", language: "en"), "A. Then B.")
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("É. Eu acho que sim.", language: "pt"), "É. Eu acho que sim.")
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("É. Não sei.", language: nil), "É. Não sei.")
+        XCTAssertEqual(TranscriptCleanup.removingStrayLetter("Plan B. Ship it.", language: "en"), "Plan B. Ship it.")
+    }
+
+    func testEhIsAFiller() {
+        XCTAssertEqual(fillers("Eh, let's go."), "Let's go.")
+    }
 }
