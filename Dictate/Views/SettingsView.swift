@@ -15,6 +15,8 @@ struct SettingsView: View {
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
     @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
     @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
+    @AppStorage(SpokenRepair.repairKey) private var repairSpokenText = false
+    @AppStorage(SpokenRepair.polishKey) private var polishSpokenText = false
     @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
@@ -142,6 +144,15 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             Toggle("Format numbers", isOn: $formatNumbers)
             Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Repair spoken text", isOn: $repairSpokenText)
+            Text("Fixes self-corrections, grammar, and obvious transcription mistakes. The transcript is sent to Inworld, and paste waits for the result.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Polish", isOn: $polishSpokenText)
+                .disabled(!repairSpokenText)
+            Text("Also tightens and rephrases, and keeps the meaning.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
