@@ -59,9 +59,25 @@ The global shortcut starts dictation. It starts as Hold or tap: hold the shortcu
 The key is stored in `~/Library/Application Support/Dictate/inworld-api-key`, readable only by your user account, not in UserDefaults or a plist. It used to be in the Keychain, but without an Apple team ID macOS asked for the login password after every update. A key saved there by an older version moves to the file the first time Dictate reads it.
 
 - On first launch, the setup sheet has a field for it. Save the key there.
-- Later, open **Settings**, paste the key into the Inworld API key field, and leave the field so it is saved. **Test connection** opens a short WebSocket session and reports whether the key was accepted. **Remove key** deletes it.
+- Later, open **Settings**, paste the key into the Inworld API key field, and leave the field so it is saved. **Test connection** opens a short WebSocket session and reports whether Inworld answered and accepted the key. **Remove key** deletes it.
 
 Dictate sends the key as the `Authorization` value. If it already starts with `basic `, it is sent as-is. It is not printed in logs.
+
+## Troubleshooting
+
+When a dictation comes back empty, the message says why:
+
+- **Couldn't reach Inworld.** Inworld never answered. A VPN, proxy or firewall is usually holding the connection open without letting replies through. Exclude `api.inworld.ai` from the VPN or from HTTPS inspection, or try another network.
+- **The microphone sent only silence.** The audio that went out never rose above about -60 dBFS. Check the input chosen in Settings and the input level in System Settings → Sound.
+- **No speech was transcribed.** Inworld got live audio and found no words.
+
+**Test connection** sends a tenth of a second of silence and waits up to five seconds for Inworld to answer.
+
+Dictate logs each session's microphone format, how much audio it sent and how loud it was, and what Inworld answered. Entries never include the key or the transcript. To read the last ten minutes:
+
+```sh
+/usr/bin/log show --last 10m --info --predicate 'subsystem == "com.johndaniels.Dictate"'
+```
 
 ## Permissions
 

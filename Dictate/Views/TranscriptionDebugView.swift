@@ -85,6 +85,8 @@ final class TranscriptionDebugModel: ObservableObject {
     private let capture = AudioRecorder()
     private var session: Task<Void, Never>?
     private var stopRequested = false
+    private var audioBytes = 0
+    private var audioPeak = 0
 
     func toggleRecording(apiKey: String) {
         if isRecording {
@@ -111,6 +113,8 @@ final class TranscriptionDebugModel: ObservableObject {
         failed = false
         committed = ""
         interim = ""
+        audioBytes = 0
+        audioPeak = 0
         isRecording = true
         status = "Requesting microphone"
         let language = language
@@ -142,6 +146,8 @@ final class TranscriptionDebugModel: ObservableObject {
                 status = "Listening"
                 for await chunk in stream {
                     if stopRequested { break }
+                    audioBytes += chunk.data.count
+                    audioPeak = max(audioPeak, PCMConversion.peak(of: chunk.data))
                     await client.sendAudio(chunk.data)
                 }
                 if await client.isStreaming {
@@ -179,11 +185,22 @@ final class TranscriptionDebugModel: ObservableObject {
                 Task { @MainActor in
                     guard let self else { return }
                     let timedOut = await self.client.finishedByTimeout
+                    let heard = await self.client.heardFromServer
                     self.committed = fullText
                     self.interim = ""
-                    self.failed = false
                     self.isRecording = false
-                    self.status = timedOut ? DictationFailure.timedOut : "Done"
+                    if fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.failed = true
+                        self.status = DictationFailure.emptyResult(
+                            heardFromServer: heard,
+                            timedOut: timedOut,
+                            sentAudio: self.audioBytes > 0,
+                            peak: self.audioPeak
+                        )
+                    } else {
+                        self.failed = false
+                        self.status = timedOut ? DictationFailure.timedOut : "Done"
+                    }
                 }
             },
             onError: { [weak self] error in

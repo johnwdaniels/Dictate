@@ -23,6 +23,8 @@ actor InworldSTTClient {
     }
 
     private(set) var finishedByTimeout = false
+    /// Whether Inworld sent anything at all on the current socket. Silence from the server is a network problem.
+    private(set) var heardFromServer = false
 
     private let session: URLSession
     private var socket: URLSessionWebSocketTask?
@@ -127,6 +129,7 @@ actor InworldSTTClient {
         self.sessionID = sessionID
         committed = ""
         finishedByTimeout = false
+        heardFromServer = false
         phase = .starting
 
         var request = URLRequest(url: url)
@@ -147,6 +150,9 @@ actor InworldSTTClient {
             #if DEBUG
             print("[InworldSTT] start \(config)")
             #endif
+            DictateLog.connection.info(
+                "Session start: \(modelId, privacy: .public), language \(language ?? "auto", privacy: .public), \(self.prompts.count) prompts"
+            )
             try await socket.send(.string(config))
         } catch {
             phase = .finished
@@ -250,6 +256,9 @@ actor InworldSTTClient {
                 handle(message, sessionID: sessionID)
             } catch {
                 guard sessionID == self.sessionID else { return }
+                DictateLog.connection.error(
+                    "Socket ended while \(String(describing: self.phase), privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
                 if phase == .starting {
                     let wrapped = InworldSTTError.connectionLost(error.localizedDescription)
                     if startupContinuation != nil {
@@ -280,6 +289,7 @@ actor InworldSTTClient {
             text = nil
         }
         guard let text else { return }
+        heardFromServer = true
 
         switch InworldSTTMessages.parse(text) {
         case .interim(let transcript):
@@ -291,6 +301,7 @@ actor InworldSTTClient {
                 print("[InworldSTT] dropped echoed dictionary terms: \(transcript)")
             }
             #endif
+            DictateLog.connection.info("Final: \(transcript.count) characters, \(kept.count) kept")
             committed = InworldSTTMessages.appending(committed, kept)
             onFinal(kept)
             scheduleSettleIfClosing(sessionID: sessionID)
@@ -300,6 +311,7 @@ actor InworldSTTClient {
                 completeIfClosing(sessionID: sessionID)
             }
         case .serverError(let message):
+            DictateLog.connection.error("Server error: \(DictationFailure.serverMessage(message), privacy: .public)")
             let error: InworldSTTError = DictationFailure.looksLikeRejectedKey(message)
                 ? .rejectedKey
                 : .server(message)
@@ -366,6 +378,9 @@ actor InworldSTTClient {
         phase = .finished
         finishedByTimeout = timedOut
         let text = committed
+        DictateLog.connection.info(
+            "Session end: \(text.count) characters, heard from server \(self.heardFromServer), timed out \(timedOut)"
+        )
         teardownSocket()
         onComplete(text)
     }
@@ -402,6 +417,12 @@ actor InworldSTTClient {
     }
 
     private func logDiagnostic(_ name: String, raw: String) {
+        // Usage carries how much audio Inworld received, which tells a dead microphone from a dead connection.
+        if name == "usage" {
+            DictateLog.connection.info("Usage: \(raw, privacy: .public)")
+        } else {
+            DictateLog.connection.debug("\(name, privacy: .public)")
+        }
         #if DEBUG
         print("[InworldSTT] \(name) \(raw)")
         #endif

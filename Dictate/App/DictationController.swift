@@ -395,6 +395,7 @@ final class DictationController: ObservableObject {
             var sentAudio = false
             for await chunk in stream where chunk.time >= forwardFrom {
                 sentAudio = true
+                outcome.addAudio(chunk.data)
                 await client.sendAudio(chunk.data)
             }
             if !sentAudio, await shouldStop(generation) {
@@ -426,8 +427,11 @@ final class DictationController: ObservableObject {
         if startedSocket {
             await client.stop()
             outcome.setTimedOut(await client.finishedByTimeout)
+            outcome.setHeardFromServer(await client.heardFromServer)
             await client.cancel()
         }
+        let audio = outcome.audio()
+        DictateLog.audio.info("Sent \(audio.bytes) bytes of audio, peak \(audio.peak) of 32768")
         await self.deliver(outcome.snapshot(), generation: generation)
     }
 
@@ -470,7 +474,7 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func deliver(_ outcome: (text: String?, error: Error?, timedOut: Bool), generation: UUID) async {
+    private func deliver(_ outcome: TranscriptOutcome.Snapshot, generation: UUID) async {
         guard self.generation == generation else { return }
         interimText = ""
 
@@ -483,7 +487,12 @@ final class DictationController: ObservableObject {
         let raw = outcome.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if raw.isEmpty {
             phase = .idle
-            report(outcome.timedOut ? DictationFailure.timedOut : DictationFailure.emptyTranscript)
+            report(DictationFailure.emptyResult(
+                heardFromServer: outcome.heardFromServer,
+                timedOut: outcome.timedOut,
+                sentAudio: outcome.audioBytes > 0,
+                peak: outcome.audioPeak
+            ))
             return
         }
         let cleaned = TranscriptCleanup.clean(raw)
@@ -545,6 +554,18 @@ private final class TranscriptOutcome: @unchecked Sendable {
     private var text: String?
     private var error: Error?
     private var timedOut = false
+    private var heardFromServer = true
+    private var audioBytes = 0
+    private var audioPeak = 0
+
+    struct Snapshot {
+        let text: String?
+        let error: Error?
+        let timedOut: Bool
+        let heardFromServer: Bool
+        let audioBytes: Int
+        let audioPeak: Int
+    }
 
     func setText(_ text: String) {
         lock.lock()
@@ -566,10 +587,37 @@ private final class TranscriptOutcome: @unchecked Sendable {
         lock.unlock()
     }
 
-    func snapshot() -> (text: String?, error: Error?, timedOut: Bool) {
+    func setHeardFromServer(_ heard: Bool) {
+        lock.lock()
+        heardFromServer = heard
+        lock.unlock()
+    }
+
+    func addAudio(_ data: Data) {
+        let peak = PCMConversion.peak(of: data)
+        lock.lock()
+        audioBytes += data.count
+        audioPeak = max(audioPeak, peak)
+        lock.unlock()
+    }
+
+    func audio() -> (bytes: Int, peak: Int) {
         lock.lock()
         defer { lock.unlock() }
-        return (text, error, timedOut)
+        return (audioBytes, audioPeak)
+    }
+
+    func snapshot() -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return Snapshot(
+            text: text,
+            error: error,
+            timedOut: timedOut,
+            heardFromServer: heardFromServer,
+            audioBytes: audioBytes,
+            audioPeak: audioPeak
+        )
     }
 }
 

@@ -7,6 +7,7 @@ enum InworldSTTError: LocalizedError, Sendable {
     case microphoneDenied
     case audioFormatUnavailable
     case connectionLost(String)
+    case unreachable
     case rejectedKey
     case server(String)
 
@@ -24,6 +25,8 @@ enum InworldSTTError: LocalizedError, Sendable {
             return "The microphone format is unavailable."
         case .connectionLost:
             return DictationFailure.connectionDropped
+        case .unreachable:
+            return DictationFailure.unreachable
         case .rejectedKey:
             return DictationFailure.rejectedKey
         case .server(let message):

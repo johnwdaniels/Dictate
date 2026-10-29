@@ -10,8 +10,18 @@ enum DictationFailure {
     static let accessibilityDenied = "Allow Accessibility for Dictate in System Settings. If Dictate is already on there, remove it with −, add it again, then quit and reopen Dictate."
     static let emptyTranscript = "No speech was transcribed."
     static let timedOut = "Transcription timed out. Try again."
+    static let unreachable = "Couldn't reach Inworld. A VPN or firewall may be blocking it."
+    static let silentAudio = "The microphone sent only silence. Check the input in Settings."
     static let generic = "Something went wrong. Try again."
     static let keychain = "Couldn't read the saved API key. Save it again in Settings."
+
+    /// Why a finished session has no text. A server that never answered is a network problem, and audio that never rose
+    /// above `PCMConversion.silencePeak` is a microphone problem, so neither reads as "no speech".
+    static func emptyResult(heardFromServer: Bool, timedOut: Bool, sentAudio: Bool, peak: Int) -> String {
+        if !heardFromServer { return unreachable }
+        if sentAudio, peak <= PCMConversion.silencePeak { return silentAudio }
+        return timedOut ? self.timedOut : emptyTranscript
+    }
 
     static func message(for error: Error) -> String {
         if let error = error as? InworldSTTError {
@@ -65,6 +75,7 @@ enum DictationFailure {
         let value = text.lowercased()
         if value.contains("401") { return true }
         if value.contains("unauthor") || value.contains("unauthent") { return true }
+        if value.contains("authentication is required") || value.contains("authorization credentials") { return true }
         if value.contains("invalid api key") || value.contains("api key") { return true }
         if value.contains("permission denied") { return true }
         return false

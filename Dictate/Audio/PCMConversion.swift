@@ -38,6 +38,16 @@ enum PCMConversion {
         return linear16Data(from: output)
     }
 
+    /// About -60 dBFS. A working microphone's room noise peaks well above this, so audio at or below it was never live.
+    static let silencePeak = 32
+
+    /// The loudest sample in LINEAR16 bytes, from 0 to 32768.
+    static func peak(of data: Data) -> Int {
+        data.withUnsafeBytes { raw in
+            raw.bindMemory(to: Int16.self).reduce(0) { max($0, abs(Int(Int16(littleEndian: $1)))) }
+        }
+    }
+
     static func linear16Data(from buffer: AVAudioPCMBuffer) -> Data? {
         guard buffer.frameLength > 0, let samples = buffer.int16ChannelData else { return nil }
         let byteCount = Int(buffer.frameLength) * MemoryLayout<Int16>.size
