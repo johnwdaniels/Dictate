@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         FrontmostAppTracker.shared.start()
         dictationController.startMonitoringShortcut()
+        // Starts Sparkle's scheduled checks.
+        _ = AppUpdater.shared
         if !UserDefaults.standard.bool(forKey: Onboarding.completeKey) {
             openMainWindow()
         }
@@ -72,7 +74,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A normal policy while this window is open lets it take focus and record shortcuts.
         NSApp.setActivationPolicy(.regular)
         openWindow(id: Self.mainWindowID)
-        NSApp.activate()
+        // `activate()` is only a request since macOS 14, and it is often declined while the app is leaving
+        // menu-bar-only mode, so the window opened behind the app in front. Once the policy change has landed, bring
+        // the app forward and order the window to the front explicitly.
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            guard let window = NSApp.windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized) }) else { return }
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 
     func mainWindowClosed() {

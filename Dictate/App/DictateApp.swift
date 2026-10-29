@@ -10,6 +10,9 @@ struct DictateApp: App {
             Button("Open Dictate") {
                 appDelegate.openMainWindow()
             }
+            Button("Check for Updates…") {
+                AppUpdater.shared.checkForUpdates()
+            }
             Divider()
             Button("Quit") {
                 NSApp.terminate(nil)

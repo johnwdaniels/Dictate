@@ -48,6 +48,7 @@ struct SettingsView: View {
             pasteSection
             permissionsSection
             loginSection
+            UpdatesSection()
         }
         .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -377,6 +378,28 @@ struct SettingsView: View {
                 testMessage = error.localizedDescription
             }
             testRunning = false
+        }
+    }
+}
+
+/// Settings for Sparkle's automatic updates.
+private struct UpdatesSection: View {
+    @ObservedObject private var updater = AppUpdater.shared
+
+    var body: some View {
+        Section("Updates") {
+            Toggle("Check for updates automatically", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: { updater.automaticallyChecksForUpdates = $0 }
+            ))
+            Toggle("Download and install updates automatically", isOn: Binding(
+                get: { updater.automaticallyDownloadsUpdates },
+                set: { updater.automaticallyDownloadsUpdates = $0 }
+            ))
+            .disabled(!updater.automaticallyChecksForUpdates)
+            LabeledContent("Version", value: AppUpdater.currentVersion)
+            Button("Check for Updates…", action: updater.checkForUpdates)
+                .disabled(!updater.canCheckForUpdates)
         }
     }
 }

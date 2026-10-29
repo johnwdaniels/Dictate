@@ -9,25 +9,28 @@ Native macOS menu bar dictation app written in Swift and SwiftUI. It requires ma
 3. Open Dictate. The first time, macOS says it can't verify the developer, because releases are signed with a self-signed certificate instead of a paid Apple Developer ID. Open **System Settings → Privacy & Security**, scroll to the message about Dictate, click **Open Anyway**, and confirm.
 4. Allow Accessibility when asked, then use **Quit and reopen** in Settings.
 
-To update, quit Dictate and replace the app in Applications. Every release is signed with the same "Dictate Release" certificate, so macOS treats the update as the same app and Accessibility stays on.
+Dictate checks for updates once a day with [Sparkle](https://sparkle-project.org). When a new release is out, it asks whether to install it, then relaunches. **Check for Updates…** in the menu bar checks right away, and **Settings → Updates** can turn the daily check off or install updates without asking. Every release is signed with the same "Dictate Release" certificate, so macOS treats the update as the same app and Accessibility stays on.
+
+The feed is `appcast.xml` on the latest release. GitHub only serves release files to signed-out visitors when the repository is public, so automatic updates start working once it is. If the repository moves, change the `DICTATE_APPCAST_URL` build setting.
 
 If Settings says Accessibility is off while System Settings shows Dictate on, the switch belongs to an earlier copy, such as one built in Xcode. Click **Reset Accessibility** in Settings, turn Dictate on again, then **Quit and reopen**.
 
 ### Publishing a release
 
-Push a version tag. GitHub Actions runs the tests, builds the app, signs it with the release certificate, and attaches the zip to a release named after the tag.
+Push a version tag. GitHub Actions runs the tests, builds the app, signs it with the release certificate, and attaches the zip and the update feed to a release named after the tag.
 
 ```sh
 git tag v1.2.0
 git push origin v1.2.0
 ```
 
-Signing needs two repository secrets, set once by the repository owner under **Settings → Secrets and variables → Actions**:
+Releases need three repository secrets, set once by the repository owner under **Settings → Secrets and variables → Actions**:
 
 - `DICTATE_SIGNING_P12`: the base64 text of the "Dictate Release" certificate and key (`.p12`).
 - `DICTATE_SIGNING_PASSWORD`: that file's password.
+- `SPARKLE_ED_PRIVATE_KEY`: the private EdDSA key that signs each update. Its public half is `SUPublicEDKey` in `Dictate/Info.plist`.
 
-Keep using the same certificate. A new one makes every Mac treat the next update as a different app. Without the secrets, the release is signed ad-hoc, the run shows a warning, and Accessibility won't carry over to the next update.
+Keep using the same certificate and the same Sparkle key. A new certificate makes every Mac treat the next update as a different app, and a new Sparkle key makes installed copies reject updates. Without the signing secrets, the release is signed ad-hoc and Accessibility won't carry over. Without the Sparkle key, the release has no update feed. Either way, the run shows a warning.
 
 ## Build from source
 
