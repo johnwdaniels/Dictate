@@ -6,7 +6,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdOrTap.rawValue
-    @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
+    @AppStorage(DictationLanguage.storageKey) private var languageCode = DictationLanguage.defaultCode
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
     @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
     @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
@@ -48,6 +48,7 @@ struct SettingsView: View {
             languageSection
             StyleSection()
             cleanupSection
+            aiEditingSection
             pasteSection
             permissionsSection
             loginSection
@@ -151,15 +152,25 @@ struct SettingsView: View {
             Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Toggle("Repair spoken text", isOn: $repairSpokenText)
-            Text("Fixes self-corrections, grammar, and obvious transcription mistakes. The transcript is sent to Inworld, and paste waits for the result.")
+        }
+    }
+
+    /// The only settings that send the transcript off the Mac, so they sit apart from the local clean-up.
+    private var aiEditingSection: some View {
+        Section {
+            Toggle("Fix self-corrections and grammar", isOn: $repairSpokenText)
+            Text("“Tuesday, no, Wednesday” becomes “Wednesday.” Also fixes grammar and misheard words, and otherwise keeps your wording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Toggle("Polish", isOn: $polishSpokenText)
+            Toggle("Also tighten wording", isOn: $polishSpokenText)
                 .disabled(!repairSpokenText)
-            Text("Also tightens and rephrases, and keeps the meaning.")
+            Text("May shorten and reword sentences while keeping the meaning. Better for messages than for exact wording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+        } header: {
+            Text("AI editing")
+        } footer: {
+            Text("Sends the transcript to an AI model through Inworld. Pasting can wait up to 1.5 seconds.")
         }
     }
 
