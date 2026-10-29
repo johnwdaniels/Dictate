@@ -32,6 +32,8 @@
 	<string>NSApplication</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>$(DICTATE_APPCAST_URL)</string>
 	<key>SUPublicEDKey</key>

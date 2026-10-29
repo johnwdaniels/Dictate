@@ -14,11 +14,16 @@ final class AppUpdater: ObservableObject {
     @Published private(set) var canCheckForUpdates = false
 
     private let controller: SPUStandardUpdaterController
+    let idleInstaller = IdleUpdateInstaller()
 
     private init() {
         // Unit tests run inside the app, so the updater stays off there.
         let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-        controller = SPUStandardUpdaterController(startingUpdater: !isTesting, updaterDelegate: nil, userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(
+            startingUpdater: !isTesting,
+            updaterDelegate: idleInstaller,
+            userDriverDelegate: nil
+        )
         controller.updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheckForUpdates)
     }
 

@@ -39,8 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         FrontmostAppTracker.shared.start()
         dictationController.startMonitoringShortcut()
-        // Starts Sparkle's scheduled checks.
-        _ = AppUpdater.shared
+        // Starts Sparkle's scheduled checks. A downloaded update waits until no dictation is running.
+        AppUpdater.shared.idleInstaller.isBusy = { [weak dictationController] in
+            dictationController?.phase != .idle
+        }
         if !UserDefaults.standard.bool(forKey: Onboarding.completeKey) {
             openMainWindow()
         }
