@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdToTalk.rawValue
     @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
+    @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
     @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
@@ -148,7 +149,9 @@ struct SettingsView: View {
     private var indicatorSection: some View {
         Section("Indicator") {
             Toggle("Hide the recording indicator", isOn: $hideIndicator)
-            Text("A small pill above the Dock while you dictate. It does not take focus.")
+            Toggle("Show live text", isOn: $showLiveText)
+                .disabled(hideIndicator)
+            Text("A small pill above the Dock while you dictate. It does not take focus. Turn off live text to see only the waveform; errors still show.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
