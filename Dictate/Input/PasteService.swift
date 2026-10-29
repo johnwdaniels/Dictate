@@ -50,7 +50,8 @@ enum PasteService {
                 try postClick(at: screenPoint(fromCocoa: NSEvent.mouseLocation))
                 try await Task.sleep(for: .milliseconds(100))
             }
-            try writeToPasteboard(text)
+            let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+            try writeToPasteboard(SmartSpacing.prepare(text, bundleID: bundleID))
             try postCommandV()
             try await Task.sleep(for: .milliseconds(150))
             snapshot.restore()
