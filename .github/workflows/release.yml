@@ -85,12 +85,30 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$app" "Dictate-$TAG.zip"
           shasum -a 256 "Dictate-$TAG.zip" > "Dictate-$TAG.zip.sha256"
 
+      # Installed copies check appcast.xml on the latest release once a day. Sparkle only installs an update whose
+      # EdDSA signature matches the public key in Info.plist, so the feed needs the matching private key.
+      - name: Write the update feed
+        env:
+          SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_KEY" ]; then
+            echo "::warning::SPARKLE_ED_PRIVATE_KEY is not set, so this release has no appcast.xml and installed copies won't be offered it."
+            exit 0
+          fi
+          printf '%s' "$SPARKLE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          cp "Dictate-$TAG.zip" build/Build/Products/Release/
+          scripts/make-appcast.sh "build/Build/Products/Release/Dictate-$TAG.zip" "$TAG" "${{ github.run_number }}" \
+            "${{ github.server_url }}/${{ github.repository }}" \
+            build/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update "$RUNNER_TEMP/sparkle.key"
+          rm "$RUNNER_TEMP/sparkle.key"
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$TAG" "Dictate-$TAG.zip" "Dictate-$TAG.zip.sha256"
-          --title "Dictate $TAG" --generate-notes --verify-tag
+        run: |
+          assets=("Dictate-$TAG.zip" "Dictate-$TAG.zip.sha256")
+          if [ -f appcast.xml ]; then assets+=(appcast.xml); fi
+          gh release create "$TAG" "${assets[@]}" --title "Dictate $TAG" --generate-notes --verify-tag
 
       - name: Remove the signing keychain
         if: always()

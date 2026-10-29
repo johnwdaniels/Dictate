@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		D1C7A7E0000000000000000D /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = D1C7A7E0000000000000000B /* KeyboardShortcuts */; };
+		D1C7A7E0000000000000005A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D1C7A7E0000000000000005C /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1C7A7E0000000000000000D /* KeyboardShortcuts in Frameworks */,
+				D1C7A7E0000000000000005A /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +113,7 @@
 			name = Dictate;
 			packageProductDependencies = (
 				D1C7A7E0000000000000000B /* KeyboardShortcuts */,
+				D1C7A7E0000000000000005C /* Sparkle */,
 			);
 			productName = Dictate;
 			productReference = D1C7A7E00000000000000007 /* Dictate.app */;
@@ -169,6 +172,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D1C7A7E0000000000000000C /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				D1C7A7E0000000000000005B /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D1C7A7E00000000000000003 /* Products */;
@@ -280,6 +284,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				DICTATE_APPCAST_URL = "https://github.com/johnwdaniels/Dictate/releases/latest/download/appcast.xml";
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.Dictate;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -308,6 +313,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				DICTATE_APPCAST_URL = "https://github.com/johnwdaniels/Dictate/releases/latest/download/appcast.xml";
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.Dictate;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -331,6 +337,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				DICTATE_APPCAST_URL = "https://github.com/johnwdaniels/Dictate/releases/latest/download/appcast.xml";
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.DictateTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -354,6 +361,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
+				DICTATE_APPCAST_URL = "https://github.com/johnwdaniels/Dictate/releases/latest/download/appcast.xml";
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.DictateTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -403,6 +411,14 @@
 				minimumVersion = 3.1.0;
 			};
 		};
+		D1C7A7E0000000000000005B /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -410,6 +426,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D1C7A7E0000000000000000C /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
 			productName = KeyboardShortcuts;
+		};
+		D1C7A7E0000000000000005C /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D1C7A7E0000000000000005B /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

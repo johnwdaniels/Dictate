@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         FrontmostAppTracker.shared.start()
         dictationController.startMonitoringShortcut()
+        // Starts Sparkle's scheduled checks.
+        _ = AppUpdater.shared
         if !UserDefaults.standard.bool(forKey: Onboarding.completeKey) {
             openMainWindow()
         }
