@@ -6,16 +6,28 @@ Native macOS menu bar dictation app written in Swift and SwiftUI. It requires ma
 
 1. Download the latest `Dictate-v….zip` from [Releases](https://github.com/johnwdaniels/Dictate/releases). It runs on Apple silicon and Intel.
 2. Unzip it and move **Dictate.app** to Applications.
-3. Open Dictate. The first time, macOS says it can't verify the developer, because releases are signed ad-hoc instead of with a paid Apple Developer ID. Open **System Settings → Privacy & Security**, scroll to the message about Dictate, click **Open Anyway**, and confirm.
+3. Open Dictate. The first time, macOS says it can't verify the developer, because releases are signed with a self-signed certificate instead of a paid Apple Developer ID. Open **System Settings → Privacy & Security**, scroll to the message about Dictate, click **Open Anyway**, and confirm.
+4. Allow Accessibility when asked, then use **Quit and reopen** in Settings.
 
-Each release is a new ad-hoc signature, so macOS treats an update as a different app, even though the Accessibility list still shows Dictate turned on. After updating, select Dictate under **Privacy & Security → Accessibility**, remove it with **−**, add it again with **+**, then use **Quit and reopen** in Settings. Turning the switch off and on is often not enough. Microphone access may be asked for again.
+To update, quit Dictate and replace the app in Applications. Every release is signed with the same "Dictate Release" certificate, so macOS treats the update as the same app and Accessibility stays on.
 
-To publish a release, push a version tag. GitHub Actions runs the tests, builds the app, and attaches the zip to a release named after the tag.
+If Settings says Accessibility is off while System Settings shows Dictate on, the switch belongs to an earlier copy, such as one built in Xcode. Click **Reset Accessibility** in Settings, turn Dictate on again, then **Quit and reopen**.
+
+### Publishing a release
+
+Push a version tag. GitHub Actions runs the tests, builds the app, signs it with the release certificate, and attaches the zip to a release named after the tag.
 
 ```sh
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
+
+Signing needs two repository secrets, set once by the repository owner under **Settings → Secrets and variables → Actions**:
+
+- `DICTATE_SIGNING_P12`: the base64 text of the "Dictate Release" certificate and key (`.p12`).
+- `DICTATE_SIGNING_PASSWORD`: that file's password.
+
+Keep using the same certificate. A new one makes every Mac treat the next update as a different app. Without the secrets, the release is signed ad-hoc, the run shows a warning, and Accessibility won't carry over to the next update.
 
 ## Build from source
 

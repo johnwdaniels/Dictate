@@ -97,6 +97,11 @@ struct SettingsView: View {
             Text("Shortcuts must include Command, Option, or Control, or be a right-side modifier on its own, such as Right Option. Hold to talk records while the shortcut is held. Toggle starts and stops on each press. Hold or tap does both: hold to record until you let go, or tap once to start and again to stop.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            if accessibilityStatus != "Allowed", let modifier = ModifierKey.stored(for: .startDictation) {
+                Text("\(modifier.title) on its own needs Accessibility, which is off. Fix it under Permissions below.")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
             LabeledContent("Open recording") {
                 ShortcutRecorderField(name: .openRecording)
                     .fixedSize()
@@ -222,7 +227,10 @@ struct SettingsView: View {
                 Text(AccessibilityPermission.needsRestartNote)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Button("Quit and reopen", action: AccessibilityPermission.quitAndReopen)
+                HStack {
+                    Button("Reset Accessibility", action: AccessibilityPermission.resetAndAsk)
+                    Button("Quit and reopen", action: AccessibilityPermission.quitAndReopen)
+                }
             }
         }
     }
