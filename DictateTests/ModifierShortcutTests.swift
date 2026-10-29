@@ -8,37 +8,38 @@ final class ModifierShortcutTests: XCTestCase {
 
     func testAHoldReportsAPressThenAReleaseAtTheRealTimes() {
         var tracker = ModifierTapTracker()
-        tracker.modifierDown(at: start)
+        XCTAssertEqual(tracker.modifierDown(at: start), [.armed(start)])
         XCTAssertEqual(tracker.holdElapsed(), [.pressed(start)])
         XCTAssertEqual(tracker.modifierUp(at: start.addingTimeInterval(2)), [.released(start.addingTimeInterval(2))])
     }
 
     func testAQuickTapReportsBothWhenTheKeyComesUp() {
         var tracker = ModifierTapTracker()
-        tracker.modifierDown(at: start)
+        _ = tracker.modifierDown(at: start)
         let up = start.addingTimeInterval(0.08)
         XCTAssertEqual(tracker.modifierUp(at: up), [.pressed(start), .released(up)])
     }
 
     func testAChordLikeOptionEIsNotAShortcut() {
         var tracker = ModifierTapTracker()
-        tracker.modifierDown(at: start)
-        tracker.otherInput()
+        _ = tracker.modifierDown(at: start)
+        XCTAssertEqual(tracker.otherInput(), [.disarmed])
+        XCTAssertEqual(tracker.otherInput(), [])
         XCTAssertEqual(tracker.holdElapsed(), [])
         XCTAssertEqual(tracker.modifierUp(at: start.addingTimeInterval(0.3)), [])
     }
 
     func testTypingAfterDictationStartedDoesNotCancelIt() {
         var tracker = ModifierTapTracker()
-        tracker.modifierDown(at: start)
+        _ = tracker.modifierDown(at: start)
         _ = tracker.holdElapsed()
-        tracker.otherInput()
+        XCTAssertEqual(tracker.otherInput(), [])
         XCTAssertEqual(tracker.modifierUp(at: start.addingTimeInterval(1)), [.released(start.addingTimeInterval(1))])
     }
 
     func testTheHoldDelayFiresOnlyOnce() {
         var tracker = ModifierTapTracker()
-        tracker.modifierDown(at: start)
+        _ = tracker.modifierDown(at: start)
         _ = tracker.holdElapsed()
         XCTAssertEqual(tracker.holdElapsed(), [])
     }

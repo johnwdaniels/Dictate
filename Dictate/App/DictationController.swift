@@ -79,6 +79,10 @@ final class DictationController: ObservableObject {
     private var recordingStoppedAt: Date?
     private var holdOrTap = HoldOrTapShortcut()
     private var modifierMonitors: [ModifierShortcutMonitor] = []
+    /// True between a right-side modifier going down and the press being confirmed. The mic and connection are already
+    /// starting, but nothing has been played or shown yet.
+    private var armedSession = false
+    private var gate = StartGate()
     private let notices = DictationNoticePresenter()
 
     func startMonitoringShortcut() {
@@ -108,6 +112,8 @@ final class DictationController: ObservableObject {
         // A lone right-side modifier, such as Right Option, can be either shortcut.
         let dictationModifier = ModifierShortcutMonitor(
             name: .startDictation,
+            onArm: { [weak self] time in self?.shortcutArmed(at: time) },
+            onDisarm: { [weak self] in self?.cancelArmed() },
             onPress: { [weak self] time in self?.shortcutPressed(at: time) },
             onRelease: { [weak self] time in self?.shortcutReleased(at: time) }
         )
@@ -133,7 +139,35 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// A right-side modifier went down. Start the mic and the connection now, quietly, so nothing said during the
+    /// typing check is lost. Every mode starts from idle on a press, so this only runs from idle.
+    private func shortcutArmed(at time: Date) {
+        guard phase == .idle else { return }
+        begin(armedAt: time)
+    }
+
+    /// The modifier was part of a chord such as ⌥E, so the quiet start is dropped without a sound or the pill.
+    private func cancelArmed() {
+        guard armedSession else { return }
+        armedSession = false
+        generation = UUID()
+        phase = .idle
+        gate.cancel()
+        recorder.stop()
+        let client = client
+        Task { await client.cancel() }
+    }
+
     private func shortcutPressed(at now: Date) {
+        if armedSession {
+            // The session started on key-down. Confirm it, and let Hold or tap note when the press began.
+            if DictationListenMode.current == .holdOrTap {
+                _ = holdOrTap.pressed(at: now, phase: .idle)
+            }
+            armedSession = false
+            playStartCue()
+            return
+        }
         switch DictationListenMode.current {
         case .holdToTalk:
             guard phase == .idle else { return }
@@ -172,7 +206,7 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func begin() {
+    private func begin(armedAt: Date? = nil) {
         guard phase == .idle else { return }
         phase = .recording
         stopRequested = false
@@ -180,17 +214,32 @@ final class DictationController: ObservableObject {
         recordingStoppedAt = nil
         interimText = ""
         generation = UUID()
+        gate = StartGate(keepFrom: armedAt?.timeIntervalSinceReferenceDate)
+        armedSession = armedAt != nil
+        if armedAt == nil {
+            playStartCue()
+        }
         let generation = generation
         let recorder = recorder
         let client = client
+        let gate = gate
 
         Task.detached { [weak self] in
-            await self?.runSession(generation: generation, recorder: recorder, client: client)
+            await self?.runSession(generation: generation, recorder: recorder, client: client, gate: gate)
         }
+    }
+
+    /// The pill and the start sound come right away. The connection opens alongside them instead of before them.
+    private func playStartCue() {
+        recordingStartedAt = Date()
+        indicator?.dictationDidStart()
+        StartChime.play()
+        gate.open(cue: CFAbsoluteTimeGetCurrent(), ring: StartChime.ringDuration)
     }
 
     private func requestStop() {
         guard phase == .recording else { return }
+        armedSession = false
         phase = .processing
         stopRequested = true
         if recordingStoppedAt == nil {
@@ -203,7 +252,8 @@ final class DictationController: ObservableObject {
     private nonisolated func runSession(
         generation: UUID,
         recorder: AudioRecorder,
-        client: InworldSTTClient
+        client: InworldSTTClient,
+        gate: StartGate
     ) async {
         let apiKey: String?
         let keyNotice: String?
@@ -256,29 +306,20 @@ final class DictationController: ObservableObject {
             startedSocket = true
             audioAwaited = true
             let stream = try await audioTask.value
-            let ring = await MainActor.run { () -> TimeInterval in
-                guard self.generation == generation, self.phase == .recording else { return 0 }
-                if self.recordingStartedAt == nil {
-                    self.recordingStartedAt = Date()
-                }
-                self.indicator?.dictationDidStart()
-                StartChime.play()
-                return StartChime.ringDuration
+            // A right-side modifier starts quietly. Wait until the press is confirmed, or turns out to be a chord.
+            while gate.state == .waiting, !(await shouldStop(generation)) {
+                try? await Task.sleep(for: .milliseconds(10))
             }
-            // The mic is already open. A start sound, and the quiet before it, gets transcribed as dictionary words.
-            if ring > 0 {
-                try? await Task.sleep(for: .seconds(ring + 0.08))
+            if gate.state == .cancelled {
+                await stopSharedIfIdle(recorder: recorder, client: client)
+                return
             }
-            let stillRecording = await MainActor.run {
-                self.generation == generation && self.phase == .recording
-            }
-            if stillRecording {
-                recorder.beginForwarding()
-            }
+            // The stream kept everything since the mic opened. Skip the start sound, send the rest.
+            let forwardFrom = gate.forwardFrom
             var sentAudio = false
-            for await chunk in stream {
+            for await chunk in stream where chunk.time >= forwardFrom {
                 sentAudio = true
-                await client.sendAudio(chunk)
+                await client.sendAudio(chunk.data)
             }
             if !sentAudio, await shouldStop(generation) {
                 await recorder.stopAndWait()
@@ -300,6 +341,11 @@ final class DictationController: ObservableObject {
             }
         }
 
+        // A chord cancelled this session while it connected, and a newer one may own the mic and socket now.
+        guard await MainActor.run(body: { self.generation == generation }) else {
+            await stopSharedIfIdle(recorder: recorder, client: client)
+            return
+        }
         await recorder.stopAndWait()
         if startedSocket {
             await client.stop()
@@ -307,6 +353,14 @@ final class DictationController: ObservableObject {
             await client.cancel()
         }
         await MainActor.run { self.deliver(outcome.snapshot(), generation: generation) }
+    }
+
+    /// Stops the shared mic and socket for a cancelled session, unless a new dictation has already started on them.
+    private nonisolated func stopSharedIfIdle(recorder: AudioRecorder, client: InworldSTTClient) async {
+        let idle = await MainActor.run { self.phase == .idle }
+        guard idle else { return }
+        await recorder.stopAndWait()
+        await client.cancel()
     }
 
     private func shouldStop(_ generation: UUID) -> Bool {

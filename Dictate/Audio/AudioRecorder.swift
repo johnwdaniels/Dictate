@@ -1,33 +1,33 @@
 import AVFoundation
 import Foundation
-import os
+
+/// 16 kHz mono PCM with the time it was captured, so a session can skip audio from before its start cue.
+struct AudioChunk: Sendable {
+    let time: CFAbsoluteTime
+    let data: Data
+}
 
 /// Captures the microphone chosen in Settings, or the system default, and yields 16-bit little-endian PCM at 16 kHz, mono.
 final class AudioRecorder: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private var inputDeviceID: AudioDeviceID?
-    private let forwarding = OSAllocatedUnfairLock(initialState: false)
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
-    private var continuation: AsyncStream<Data>.Continuation?
+    private var continuation: AsyncStream<AudioChunk>.Continuation?
     private var tapInstalled = false
     private var lastLevelSent = CFAbsoluteTime(0)
 
     /// Called on the main queue, at most 30 times a second, with a level from 0 (silence) to 1.
     var onLevel: (@Sendable (Float) -> Void)?
 
-    func start() async throws -> AsyncStream<Data> {
+    /// Every chunk from the moment the microphone opens. The stream holds them until the caller is ready to read.
+    func start() async throws -> AsyncStream<AudioChunk> {
         guard await requestAccess() else {
             throw InworldSTTError.microphoneDenied
         }
         return try await MainActor.run {
             try self.openEngine()
         }
-    }
-
-    /// Audio captured after `start` is kept on the mic meter only. Call this once the start bell has finished so that sound is not transcribed.
-    func beginForwarding() {
-        forwarding.withLock { $0 = true }
     }
 
     /// Stops the microphone. Safe on the main thread. From any other thread it hops to the main queue without waiting, so it cannot deadlock a thread that the main queue needs.
@@ -48,7 +48,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    private func openEngine() throws -> AsyncStream<Data> {
+    private func openEngine() throws -> AsyncStream<AudioChunk> {
         closeEngine()
         selectInputDevice()
 
@@ -65,16 +65,16 @@ final class AudioRecorder: @unchecked Sendable {
         self.targetFormat = targetFormat
         self.converter = converter
 
-        let stream = AsyncStream<Data> { continuation in
+        let stream = AsyncStream<AudioChunk> { continuation in
             self.continuation = continuation
         }
 
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
             self.publishLevel(buffer)
-            let yieldAudio = self.forwarding.withLock { $0 }
-            guard yieldAudio, let data = self.convert(buffer) else { return }
-            self.continuation?.yield(data)
+            guard let data = self.convert(buffer) else { return }
+            let seconds = Double(buffer.frameLength) / max(buffer.format.sampleRate, 1)
+            self.continuation?.yield(AudioChunk(time: CFAbsoluteTimeGetCurrent() - seconds, data: data))
         }
         tapInstalled = true
 
@@ -107,7 +107,6 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func closeEngine() {
-        forwarding.withLock { $0 = false }
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false

@@ -142,7 +142,7 @@ final class TranscriptionDebugModel: ObservableObject {
                 status = "Listening"
                 for await chunk in stream {
                     if stopRequested { break }
-                    await client.sendAudio(chunk)
+                    await client.sendAudio(chunk.data)
                 }
                 if await client.isStreaming {
                     status = "Finishing"
