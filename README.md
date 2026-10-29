@@ -17,7 +17,7 @@ If Settings says Accessibility is off while System Settings shows Dictate on, th
 
 ### Publishing a release
 
-Push a version tag. GitHub Actions runs the tests, builds the app, signs it with the release certificate, and attaches the zip and the update feed to a release named after the tag.
+Write the notes first, in `release-notes/<tag>.md` (for example `release-notes/v1.2.0.md`), following the voice in [release-notes/README.md](release-notes/README.md). Then push a version tag. GitHub Actions runs the tests, builds the app, signs it with the release certificate, and attaches the zip and the update feed to a release named after the tag. The notes file goes on top, with GitHub's list of merged pull requests under it. Without a notes file the run shows a warning.
 
 ```sh
 git tag v1.2.0
