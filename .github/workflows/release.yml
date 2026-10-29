@@ -28,14 +28,38 @@ jobs:
             exit 1
           fi
 
-      # Releases are signed ad-hoc, with no Apple Developer ID, so they cost nothing. The README explains the first launch.
+      # Tests are signed ad-hoc; only the published app needs the release certificate.
       - name: Test
         run: >
           xcodebuild -project Dictate.xcodeproj -scheme Dictate
           -destination 'platform=macOS,arch=arm64' -derivedDataPath build
           CODE_SIGN_IDENTITY=- test
 
-      # A generic destination builds for Apple silicon and Intel in one app.
+      # Every release is signed with the same self-signed "Dictate Release" certificate, so macOS sees an update as the
+      # same app and keeps its Accessibility permission. Without the secrets the build falls back to ad-hoc and says so.
+      - name: Import the signing certificate
+        env:
+          SIGNING_P12: ${{ secrets.DICTATE_SIGNING_P12 }}
+          SIGNING_PASSWORD: ${{ secrets.DICTATE_SIGNING_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_P12" ]; then
+            echo "::warning::DICTATE_SIGNING_P12 is not set, so this release is signed ad-hoc and Accessibility will not carry over to the next update."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 16)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$SIGNING_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$SIGNING_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      # A generic destination builds for Apple silicon and Intel in one app. It is built ad-hoc and signed afterward,
+      # because a release identity passed to xcodebuild also lands on the KeyboardShortcuts package, which then asks for a team.
       - name: Build
         run: >
           xcodebuild -project Dictate.xcodeproj -scheme Dictate
@@ -44,10 +68,19 @@ jobs:
           MARKETING_VERSION="${TAG#v}" CURRENT_PROJECT_VERSION="${{ github.run_number }}"
           build
 
+      - name: Sign
+        if: env.SIGN_KEYCHAIN != ''
+        run: >
+          codesign --force --deep --preserve-metadata=entitlements
+          --sign "Dictate Release" --keychain "$SIGN_KEYCHAIN"
+          build/Build/Products/Release/Dictate.app
+
       - name: Package
         run: |
           app=build/Build/Products/Release/Dictate.app
           codesign --verify --strict "$app"
+          # The designated requirement names the certificate, which is what lets permissions survive updates.
+          codesign --display --requirements - "$app" 2>&1 | grep designated
           lipo -archs "$app/Contents/MacOS/Dictate"
           ditto -c -k --sequesterRsrc --keepParent "$app" "Dictate-$TAG.zip"
           shasum -a 256 "Dictate-$TAG.zip" > "Dictate-$TAG.zip.sha256"
@@ -58,3 +91,8 @@ jobs:
         run: >
           gh release create "$TAG" "Dictate-$TAG.zip" "Dictate-$TAG.zip.sha256"
           --title "Dictate $TAG" --generate-notes --verify-tag
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "$SIGN_KEYCHAIN" ]; then security delete-keychain "$SIGN_KEYCHAIN"; fi

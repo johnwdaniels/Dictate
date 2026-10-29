@@ -6,9 +6,22 @@ enum AccessibilityPermission {
         AXIsProcessTrusted()
     }
 
-    static let needsRestartNote = "Turn Dictate on, then quit and reopen. macOS applies Accessibility the next time Dictate starts. If Dictate is already on after an update, remove it with − and add it again, since the switch belongs to the earlier version."
+    static let needsRestartNote = "Turn Dictate on, then quit and reopen. macOS applies Accessibility the next time Dictate starts. If the list already shows Dictate on, the switch belongs to an earlier copy: click Reset Accessibility, turn Dictate on again, then quit and reopen."
 
     private static var relaunching = false
+
+    /// Clears Dictate's Accessibility entry, then asks again. A switch left over from an earlier copy shows as on but
+    /// does not apply to this one, and only a fresh entry fixes that.
+    static func resetAndAsk() {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "Accessibility", identifier]
+        try? task.run()
+        task.waitUntilExit()
+        prompt()
+        NSWorkspace.shared.open(SystemSettingsLink.accessibility)
+    }
 
     static func prompt() {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
