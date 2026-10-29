@@ -10,6 +10,13 @@ struct DictateApp: App {
             Button("Open Dictate") {
                 appDelegate.openMainWindow()
             }
+            Button("Paste Last Dictation") {
+                // The keystroke would reach the menu while it is still closing.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    appDelegate.dictationController.pasteLastDictation()
+                }
+            }
             Button("Check for Updates…") {
                 AppUpdater.shared.checkForUpdates()
             }

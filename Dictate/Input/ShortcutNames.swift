@@ -6,4 +6,7 @@ extension KeyboardShortcuts.Name {
 
     /// Press once to keep recording. Press again to stop and paste.
     static let openRecording = Self("openRecording")
+
+    /// Pastes the most recent dictation again, for one that landed nowhere.
+    static let pasteLastDictation = Self("pasteLastDictation")
 }

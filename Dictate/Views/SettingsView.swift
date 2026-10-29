@@ -113,6 +113,10 @@ struct SettingsView: View {
             Text("Press once to start, and again to stop and paste.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            LabeledContent("Paste last dictation") {
+                ShortcutRecorderField(name: .pasteLastDictation)
+                    .fixedSize()
+            }
         }
     }
 

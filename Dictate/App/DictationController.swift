@@ -56,6 +56,7 @@ protocol DictationHistorySaving: AnyObject {
         appName: String,
         bundleID: String
     ) throws
+    func latestDictationText() -> String?
 }
 
 /// The floating pill. It must not activate the app or take keyboard focus.
@@ -127,6 +128,11 @@ final class DictationController: ObservableObject {
                 self?.openRecordingPressed()
             }
         }
+        KeyboardShortcuts.onKeyDown(for: .pasteLastDictation) { [weak self] in
+            Task { @MainActor in
+                self?.pasteLastDictation()
+            }
+        }
         // A lone right-side modifier, such as Right Option, can be either shortcut.
         let dictationModifier = ModifierShortcutMonitor(
             name: .startDictation,
@@ -140,9 +146,32 @@ final class DictationController: ObservableObject {
             onPress: { [weak self] _ in self?.openRecordingPressed() },
             onRelease: { _ in }
         )
+        let pasteLastModifier = ModifierShortcutMonitor(
+            name: .pasteLastDictation,
+            onPress: { [weak self] _ in self?.pasteLastDictation() },
+            onRelease: { _ in }
+        )
         dictationModifier.start()
         openRecordingModifier.start()
-        modifierMonitors = [dictationModifier, openRecordingModifier]
+        pasteLastModifier.start()
+        modifierMonitors = [dictationModifier, openRecordingModifier, pasteLastModifier]
+    }
+
+    /// Pastes the newest dictation in history into the focused field, exactly as it was saved.
+    func pasteLastDictation() {
+        guard phase == .idle else { return }
+        guard let text = history?.latestDictationText() else {
+            notices.post("There's no dictation to paste yet.")
+            return
+        }
+        let names = Set(dictionary?.promptTerms() ?? [])
+        Task { @MainActor in
+            do {
+                try await PasteService.paste(PastePreferences.insertionText(from: text), names: names)
+            } catch {
+                self.notices.post(DictationFailure.message(for: error))
+            }
+        }
     }
 
     /// Starts a recording that stays open after the keys are released. The next press stops it and pastes.

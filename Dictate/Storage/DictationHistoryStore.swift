@@ -29,6 +29,12 @@ final class DictationHistoryStore: DictationHistorySaving {
         context.insert(entry)
         try context.save()
     }
+
+    func latestDictationText() -> String? {
+        var descriptor = FetchDescriptor<DictationEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        descriptor.fetchLimit = 1
+        return (try? container.mainContext.fetch(descriptor))?.first?.text
+    }
 }
 
 extension ModelContext {
