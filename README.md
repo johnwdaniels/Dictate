@@ -56,10 +56,10 @@ The global shortcut starts dictation. Hold to talk and Toggle are in Settings. T
 
 ## Inworld API key
 
-The key is stored in the Keychain (`com.johndaniels.Dictate`), not in UserDefaults or a plist.
+The key is stored in `~/Library/Application Support/Dictate/inworld-api-key`, readable only by your user account, not in UserDefaults or a plist. It used to be in the Keychain, but without an Apple team ID macOS asked for the login password after every update. A key saved there by an older version moves to the file the first time Dictate reads it.
 
 - On first launch, the setup sheet has a field for it. Save the key there.
-- Later, open **Settings**, paste the key into the Inworld API key field, and leave the field so it is saved. **Test connection** opens a short WebSocket session and reports whether the key was accepted. **Remove key** deletes it from the Keychain.
+- Later, open **Settings**, paste the key into the Inworld API key field, and leave the field so it is saved. **Test connection** opens a short WebSocket session and reports whether the key was accepted. **Remove key** deletes it.
 
 Dictate sends the key as the `Authorization` value. If it already starts with `basic `, it is sent as-is. It is not printed in logs.
 
