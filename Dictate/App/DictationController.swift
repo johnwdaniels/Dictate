@@ -93,6 +93,10 @@ final class DictationController: ObservableObject {
     /// starting, but nothing has been played or shown yet.
     private var armedSession = false
     private var gate = StartGate()
+    /// Opening the mic restarts the audio hardware on a headset, which cuts off a sound already playing. The start
+    /// sound waits for both the confirmed press and the open mic.
+    private var cueWaiting = false
+    private var micOpen = false
     private var liveTranscript = LiveTranscript()
     private let notices = DictationNoticePresenter()
     private var askingForMicrophone = false
@@ -230,6 +234,8 @@ final class DictationController: ObservableObject {
         liveTranscript = LiveTranscript()
         generation = UUID()
         gate = StartGate(keepFrom: armedAt?.timeIntervalSinceReferenceDate)
+        cueWaiting = false
+        micOpen = false
         armedSession = armedAt != nil
         if armedAt == nil {
             playStartCue()
@@ -275,10 +281,28 @@ final class DictationController: ObservableObject {
         return true
     }
 
-    /// The pill and the start sound come right away. The connection opens alongside them instead of before them.
+    /// The pill comes right away. The start sound waits until the mic is open. The connection opens alongside them.
     private func playStartCue() {
         recordingStartedAt = Date()
         indicator?.dictationDidStart()
+        // With the sound off there is nothing to cut off, so audio is kept from the start as before.
+        guard StartChime.ringDuration > 0 else {
+            gate.open(cue: CFAbsoluteTimeGetCurrent(), ring: 0)
+            return
+        }
+        cueWaiting = true
+        ringIfReady()
+    }
+
+    private func micDidOpen(generation: UUID) {
+        guard self.generation == generation else { return }
+        micOpen = true
+        ringIfReady()
+    }
+
+    private func ringIfReady() {
+        guard cueWaiting, micOpen, phase == .recording else { return }
+        cueWaiting = false
         StartChime.play()
         gate.open(cue: CFAbsoluteTimeGetCurrent(), ring: StartChime.ringDuration)
     }
@@ -349,7 +373,11 @@ final class DictationController: ObservableObject {
         let session = await MainActor.run { () -> (prompts: [String], language: String?) in
             (self.dictionary?.promptTerms() ?? [], DictationLanguage.storedCode)
         }
-        let audioTask = Task { try await recorder.start() }
+        let audioTask = Task {
+            let stream = try await recorder.start()
+            await MainActor.run { self.micDidOpen(generation: generation) }
+            return stream
+        }
         var startedSocket = false
         var audioAwaited = false
         do {
@@ -377,7 +405,8 @@ final class DictationController: ObservableObject {
             startedSocket = true
             audioAwaited = true
             let stream = try await audioTask.value
-            // A right-side modifier starts quietly. Wait until the press is confirmed, or turns out to be a chord.
+            // Wait for the start sound: a right-side modifier starts quietly until the press is confirmed, or turns out
+            // to be a chord.
             while gate.state == .waiting, !(await shouldStop(generation)) {
                 try? await Task.sleep(for: .milliseconds(10))
             }
