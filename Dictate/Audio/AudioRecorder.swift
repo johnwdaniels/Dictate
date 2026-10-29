@@ -54,6 +54,9 @@ final class AudioRecorder: @unchecked Sendable {
 
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
+        DictateLog.audio.info(
+            "Microphone \(self.inputDeviceID.map(String.init) ?? "default", privacy: .public): \(inputFormat.sampleRate) Hz, \(inputFormat.channelCount) channels"
+        )
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw InworldSTTError.audioFormatUnavailable
         }

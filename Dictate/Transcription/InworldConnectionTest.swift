@@ -1,6 +1,8 @@
 import Foundation
+import os
 
-/// Opens the speech-to-text socket, sends the config and `closeStream`, and does not record audio.
+/// Opens the speech-to-text socket, sends the config, a moment of silence and `closeStream`, and waits for Inworld to
+/// answer. It does not record audio.
 enum InworldConnectionTest {
     static func check(apiKey: String, language: String?) async throws {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -32,6 +34,10 @@ enum InworldConnectionTest {
         throw lastError
     }
 
+    /// A healthy session answers this much silence with usage in well under a second.
+    static let probeAudio = Data(count: 3_200)
+    static let replyWait = Duration.seconds(5)
+
     private static func probe(apiKey: String, language: String?, modelId: String, url: URL) async throws {
         let config = try InworldSTTMessages.startMessage(language: language, prompts: [], modelId: modelId)
         var request = URLRequest(url: url)
@@ -40,19 +46,43 @@ enum InworldConnectionTest {
         let session = URLSession(configuration: .ephemeral)
         let socket = session.webSocketTask(with: request)
         socket.resume()
+        // Neither `send` nor `receive` notices task cancellation, so the deadline closes the socket to end them.
+        let expired = OSAllocatedUnfairLock(initialState: false)
+        let deadline = Task {
+            try await Task.sleep(for: replyWait)
+            expired.withLock { $0 = true }
+            socket.cancel(with: .goingAway, reason: nil)
+        }
         defer {
+            deadline.cancel()
             socket.cancel(with: .goingAway, reason: nil)
             session.invalidateAndCancel()
         }
 
         do {
-            try await socket.send(.string(config))
-            try await socket.send(.string(InworldSTTMessages.closeStream))
-            try await watch(socket, key: apiKey)
+            // Listen before sending. A refused key is answered with an error and a close that can beat the probe audio,
+            // and the error is lost if nothing is reading yet.
+            async let reply: Void = awaitReply(socket, key: apiKey)
+            do {
+                try await socket.send(.string(config))
+                try await socket.send(.data(probeAudio))
+                try await socket.send(.string(InworldSTTMessages.closeStream))
+            } catch {
+                try await reply
+                throw error
+            }
+            try await reply
+            DictateLog.connection.info("Test connection: \(modelId, privacy: .public) answered")
         } catch let error as InworldSTTError {
+            DictateLog.connection.error("Test connection: \(modelId, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
             throw error
         } catch {
             let redacted = redacting(error.localizedDescription, key: apiKey)
+            if expired.withLock({ $0 }) {
+                DictateLog.connection.error("Test connection: no reply from Inworld within \(replyWait.components.seconds)s")
+                throw InworldSTTError.unreachable
+            }
+            DictateLog.connection.error("Test connection: \(redacted, privacy: .public)")
             if DictationFailure.looksLikeRejectedKey(error) || DictationFailure.looksLikeRejectedKey(redacted) {
                 throw InworldSTTError.rejectedKey
             }
@@ -60,45 +90,27 @@ enum InworldConnectionTest {
         }
     }
 
-    private static func watch(_ socket: URLSessionWebSocketTask, key: String) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                while !Task.isCancelled {
-                    let message = try await socket.receive()
-                    if Task.isCancelled { return }
-                    guard let text = text(from: message) else { continue }
-                    if case .serverError(let serverMessage) = InworldSTTMessages.parse(text) {
-                        let cleaned = redacting(serverMessage, key: key)
-                        if DictationFailure.looksLikeUnavailableModel(cleaned) {
-                            throw InworldSTTError.server(cleaned)
-                        }
-                        if DictationFailure.looksLikeRejectedKey(cleaned) {
-                            throw InworldSTTError.rejectedKey
-                        }
-                        throw InworldSTTError.server(cleaned)
-                    }
+    /// Returns at the first answer to the probe audio. A server error is thrown as the reason.
+    private static func awaitReply(_ socket: URLSessionWebSocketTask, key: String) async throws {
+        while true {
+            let message = try await socket.receive()
+            guard let text = text(from: message) else { continue }
+            switch InworldSTTMessages.parse(text) {
+            case .serverError(let serverMessage):
+                let cleaned = redacting(serverMessage, key: key)
+                if DictationFailure.looksLikeUnavailableModel(cleaned) {
+                    throw InworldSTTError.server(cleaned)
                 }
-            }
-            group.addTask {
-                try await Task.sleep(for: .seconds(4))
-            }
-            do {
-                try await group.next()
-            } catch {
-                group.cancelAll()
-                try? await drain(group)
-                if error is InworldSTTError || !isBenignClose(error) {
-                    throw error
+                if DictationFailure.looksLikeRejectedKey(cleaned) {
+                    throw InworldSTTError.rejectedKey
                 }
+                throw InworldSTTError.server(cleaned)
+            case .interim, .final, .diagnostic:
                 return
+            case .ignored:
+                continue
             }
-            group.cancelAll()
-            try? await drain(group)
         }
-    }
-
-    private static func drain(_ group: ThrowingTaskGroup<Void, Error>) async throws {
-        for try await _ in group {}
     }
 
     private static func text(from message: URLSessionWebSocketTask.Message) -> String? {
@@ -110,16 +122,6 @@ enum InworldConnectionTest {
         @unknown default:
             return nil
         }
-    }
-
-    private static func isBenignClose(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        let nsError = error as NSError
-        if nsError.domain == NSPOSIXErrorDomain && nsError.code == 57 { return true }
-        if let urlError = error as? URLError, urlError.code == .networkConnectionLost || urlError.code == .cancelled {
-            return true
-        }
-        return nsError.localizedDescription.localizedCaseInsensitiveContains("socket is not connected")
     }
 
     /// Removes the key if a transport error quotes it back. The key is never written to a log.
