@@ -1,9 +1,10 @@
 import Foundation
 
-/// Language hint sent to Inworld. An empty choice means auto-detect, and the field is omitted.
+/// Language hint sent to Inworld. An empty choice means auto-detect, and the field is omitted. With no choice saved yet,
+/// it is English.
 enum DictationLanguage {
     static let storageKey = "dictation.language"
-    static let documentationURL = URL(string: "https://docs.inworld.ai/stt/languages")!
+    static let defaultCode = "en"
 
     /// Codes from Inworld's Language Support page for `inworld/inworld-stt-1-preview`.
     static let options: [(name: String, code: String)] = [
@@ -40,8 +41,8 @@ enum DictationLanguage {
     ]
 
     static var storedCode: String? {
-        let raw = UserDefaults.standard.string(forKey: storageKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let raw = (UserDefaults.standard.string(forKey: storageKey) ?? defaultCode)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty, raw.caseInsensitiveCompare("auto") != .orderedSame else { return nil }
         guard options.contains(where: { $0.code == raw }) else { return nil }
         return raw

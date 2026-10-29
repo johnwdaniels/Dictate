@@ -8,15 +8,15 @@ Two `UserDefaults` keys. A missing key is off, which is what `bool(forKey:)` ret
 
 | Key | Control | Effect |
 | --- | --- | --- |
-| `cleanup.repairSpokenText` | Toggle, **Repair spoken text** | Sends the transcript for repair. |
-| `cleanup.polish` | Checkbox, **Polish** | Uses the polish prompt. Read as on only when repair is also on. |
+| `cleanup.repairSpokenText` | Toggle, **Fix self-corrections and grammar** | Sends the transcript for repair. |
+| `cleanup.polish` | Checkbox, **Also tighten wording** | Uses the polish prompt. Read as on only when repair is also on. |
 
 Turning repair off leaves the polish value stored. Turning repair back on restores it. The checkbox is disabled while repair is off.
 
-Both controls go in the existing Clean-up section of Settings, under the filler and number toggles. Help text:
+Both controls go in their own **AI editing** section of Settings, after Clean-up, because they are the only settings that send the transcript off the Mac. The section footer says so: “Sends the transcript to an AI model through Inworld. Pasting can wait up to 1.5 seconds.” Help text:
 
-- Repair: “Fixes self-corrections, grammar, and obvious transcription mistakes. The transcript is sent to Inworld, and paste waits for the result.”
-- Polish: “Also tightens and rephrases, and keeps the meaning.”
+- Repair: ““Tuesday, no, Wednesday” becomes “Wednesday.” Also fixes grammar and misheard words, and otherwise keeps your wording.”
+- Polish: “May shorten and reword sentences while keeping the meaning. Better for messages than for exact wording.”
 
 Local clean-up is unchanged. Stray characters, filler words, and number formatting still run on this Mac under their own toggles, whether or not repair is on.
 

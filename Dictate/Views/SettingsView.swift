@@ -6,7 +6,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdOrTap.rawValue
-    @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
+    @AppStorage(DictationLanguage.storageKey) private var languageCode = DictationLanguage.defaultCode
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
     @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
     @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
@@ -29,7 +29,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = false
     @State private var loginStatus: String?
     @State private var loginFailed = false
-    @State private var testMessage = "You have 3 seconds to click the text field that should receive the text."
+    @State private var testMessage: String?
     @State private var testRunning = false
 
     private var languageSelection: Binding<String> {
@@ -43,15 +43,14 @@ struct SettingsView: View {
             apiKeySection
             shortcutSection
             microphoneSection
-            indicatorSection
-            startSoundSection
+            whileDictatingSection
             languageSection
             StyleSection()
             cleanupSection
+            aiEditingSection
             pasteSection
             permissionsSection
-            loginSection
-            UpdatesSection()
+            generalSection
         }
         .formStyle(.grouped)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,8 +88,8 @@ struct SettingsView: View {
     }
 
     private var shortcutSection: some View {
-        Section("Dictation shortcut") {
-            LabeledContent("Dictation shortcut") {
+        Section("Shortcut") {
+            LabeledContent("Dictation") {
                 ShortcutRecorderField()
                     .fixedSize()
             }
@@ -99,7 +98,7 @@ struct SettingsView: View {
                     Text(mode.title).tag(mode.rawValue)
                 }
             }
-            Text("Shortcuts must include Command, Option, or Control, or be a right-side modifier on its own, such as Right Option. Hold to talk records while the shortcut is held. Toggle starts and stops on each press. Hold or tap does both: hold to record until you let go, or tap once to start and again to stop.")
+            Text((DictationListenMode(rawValue: listenMode) ?? .holdOrTap).summary)
                 .font(.callout)
                 .foregroundStyle(.secondary)
             if accessibilityStatus != "Allowed", let modifier = ModifierKey.stored(for: .startDictation) {
@@ -111,7 +110,7 @@ struct SettingsView: View {
                 ShortcutRecorderField(name: .openRecording)
                     .fixedSize()
             }
-            Text("Press once to start. Press the same shortcut again to stop and paste. You do not have to hold it.")
+            Text("Press once to start, and again to stop and paste.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -129,9 +128,6 @@ struct SettingsView: View {
                     Text(device.name).tag(device.uid)
                 }
             }
-            Text("When the chosen microphone is not connected, Dictate records from the system default.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
         .onAppear(perform: inputDevices.startListening)
         .onDisappear(perform: inputDevices.stopListening)
@@ -151,31 +147,31 @@ struct SettingsView: View {
             Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Toggle("Repair spoken text", isOn: $repairSpokenText)
-            Text("Fixes self-corrections, grammar, and obvious transcription mistakes. The transcript is sent to Inworld, and paste waits for the result.")
+        }
+    }
+
+    /// The only settings that send the transcript off the Mac, so they sit apart from the local clean-up.
+    private var aiEditingSection: some View {
+        Section {
+            Toggle("Fix self-corrections and grammar", isOn: $repairSpokenText)
+            Text("“Tuesday, no, Wednesday” becomes “Wednesday.” Also fixes grammar and misheard words, and otherwise keeps your wording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Toggle("Polish", isOn: $polishSpokenText)
+            Toggle("Also tighten wording", isOn: $polishSpokenText)
                 .disabled(!repairSpokenText)
-            Text("Also tightens and rephrases, and keeps the meaning.")
+            Text("May shorten and reword sentences while keeping the meaning. Better for messages than for exact wording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+        } header: {
+            Text("AI editing")
+        } footer: {
+            Text("Sends the transcript to an AI model through Inworld. Pasting can wait up to 1.5 seconds.")
         }
     }
 
-    private var indicatorSection: some View {
-        Section("Indicator") {
-            Toggle("Hide the recording indicator", isOn: $hideIndicator)
-            Toggle("Show live text", isOn: $showLiveText)
-                .disabled(hideIndicator)
-            Text("A small pill above the Dock while you dictate. It does not take focus. Turn off live text to see only the waveform; errors still show.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var startSoundSection: some View {
-        Section("Start sound") {
+    private var whileDictatingSection: some View {
+        Section("While dictating") {
+            // Choosing a sound plays it.
             Picker("Start sound", selection: $startSound) {
                 ForEach(StartSound.allCases) { sound in
                     Text(sound.title).tag(sound.rawValue)
@@ -184,13 +180,12 @@ struct SettingsView: View {
             .onChange(of: startSound) { _, _ in
                 StartChime.play()
             }
-            Button("Play sound") {
-                StartChime.play()
-            }
-            .disabled(startSound == StartSound.off.rawValue)
-            Text("Plays when transcription starts. Off starts recording in silence.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            Toggle("Show the recording pill", isOn: Binding(
+                get: { !hideIndicator },
+                set: { hideIndicator = !$0 }
+            ))
+            Toggle("Show live text in the pill", isOn: $showLiveText)
+                .disabled(hideIndicator)
         }
     }
 
@@ -199,50 +194,55 @@ struct SettingsView: View {
             Picker("Language", selection: languageSelection) {
                 Text("Auto-detect").tag("")
                 ForEach(DictationLanguage.options, id: \.code) { option in
-                    Text("\(option.name) (\(option.code))").tag(option.code)
+                    Text(option.name).tag(option.code)
                 }
             }
-            Text("A language is a hint. Auto-detect leaves the choice to the model.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Link("Language Support", destination: DictationLanguage.documentationURL)
-                .font(.callout)
         }
     }
 
     private var pasteSection: some View {
-        Section("Paste behavior") {
+        Section("Paste") {
             Toggle("Click at mouse position before pasting", isOn: $clickAtMouse)
             Toggle("Add a trailing space after each dictation", isOn: $trailingSpace)
-            Button(testRunning ? "Pasting…" : "Paste “Dictate test”") {
+            Button(testRunning ? "Pasting…" : "Test paste") {
                 runPasteTest()
             }
             .disabled(testRunning)
-            Text(testMessage)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            if let testMessage {
+                Text(testMessage)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
     private var permissionsSection: some View {
         Section("Permissions") {
             LabeledContent("Microphone") {
-                Text(microphoneStatus)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(microphoneStatus)
+                        .foregroundStyle(.secondary)
+                    if microphoneStatus != "Allowed" {
+                        Button("Open Settings") {
+                            open(SystemSettingsLink.microphone)
+                        }
+                        .accessibilityLabel("Open Microphone settings")
+                    }
+                }
             }
-            Button("Open System Settings") {
-                open(SystemSettingsLink.microphone)
-            }
-            .accessibilityLabel("Open Microphone settings")
             LabeledContent("Accessibility") {
-                Text(accessibilityStatus)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(accessibilityStatus)
+                        .foregroundStyle(.secondary)
+                    if accessibilityStatus != "Allowed" {
+                        Button("Open Settings") {
+                            AccessibilityPermission.prompt()
+                            open(SystemSettingsLink.accessibility)
+                        }
+                        .accessibilityLabel("Open Accessibility settings")
+                    }
+                }
             }
-            Button("Open System Settings") {
-                AccessibilityPermission.prompt()
-                open(SystemSettingsLink.accessibility)
-            }
-            .accessibilityLabel("Open Accessibility settings")
             if accessibilityStatus != "Allowed" {
                 Text(AccessibilityPermission.needsRestartNote)
                     .font(.callout)
@@ -255,8 +255,8 @@ struct SettingsView: View {
         }
     }
 
-    private var loginSection: some View {
-        Section("Launch at login") {
+    private var generalSection: some View {
+        Section("General") {
             Toggle("Launch at login", isOn: Binding(
                 get: { launchAtLogin },
                 set: { updateLaunchAtLogin($0) }
@@ -266,6 +266,7 @@ struct SettingsView: View {
                     .font(.callout)
                     .foregroundStyle(loginFailed ? Color.red : Color.secondary)
             }
+            UpdateRows()
         }
     }
 
@@ -384,7 +385,7 @@ struct SettingsView: View {
         testRunning = true
         Task {
             for remaining in [3, 2, 1] {
-                testMessage = "Pasting “Dictate test” in \(remaining)…"
+                testMessage = "Click the text field to paste into. Pasting “Dictate test” in \(remaining)…"
                 try? await Task.sleep(for: .seconds(1))
             }
             do {
@@ -398,24 +399,27 @@ struct SettingsView: View {
     }
 }
 
-/// Settings for Sparkle's automatic updates.
-private struct UpdatesSection: View {
+/// Sparkle's automatic updates, in the General section.
+private struct UpdateRows: View {
     @ObservedObject private var updater = AppUpdater.shared
 
     var body: some View {
-        Section("Updates") {
-            Toggle("Check for updates automatically", isOn: Binding(
-                get: { updater.automaticallyChecksForUpdates },
-                set: { updater.automaticallyChecksForUpdates = $0 }
-            ))
-            Toggle("Download and install updates automatically", isOn: Binding(
-                get: { updater.automaticallyDownloadsUpdates },
-                set: { updater.automaticallyDownloadsUpdates = $0 }
-            ))
-            .disabled(!updater.automaticallyChecksForUpdates)
-            LabeledContent("Version", value: AppUpdater.currentVersion)
-            Button("Check for Updates…", action: updater.checkForUpdates)
-                .disabled(!updater.canCheckForUpdates)
+        Toggle("Check for updates automatically", isOn: Binding(
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.automaticallyChecksForUpdates = $0 }
+        ))
+        Toggle("Download and install updates automatically", isOn: Binding(
+            get: { updater.automaticallyDownloadsUpdates },
+            set: { updater.automaticallyDownloadsUpdates = $0 }
+        ))
+        .disabled(!updater.automaticallyChecksForUpdates)
+        LabeledContent("Version") {
+            HStack {
+                Text(AppUpdater.currentVersion)
+                    .foregroundStyle(.secondary)
+                Button("Check for Updates…", action: updater.checkForUpdates)
+                    .disabled(!updater.canCheckForUpdates)
+            }
         }
     }
 }
