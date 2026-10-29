@@ -419,7 +419,7 @@ final class DictationController: ObservableObject {
             outcome.setTimedOut(await client.finishedByTimeout)
             await client.cancel()
         }
-        await MainActor.run { self.deliver(outcome.snapshot(), generation: generation) }
+        await self.deliver(outcome.snapshot(), generation: generation)
     }
 
     /// Stops the shared mic and socket for a cancelled session, unless a new dictation has already started on them.
@@ -461,18 +461,19 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func deliver(_ outcome: (text: String?, error: Error?, timedOut: Bool), generation: UUID) {
+    private func deliver(_ outcome: (text: String?, error: Error?, timedOut: Bool), generation: UUID) async {
         guard self.generation == generation else { return }
         interimText = ""
-        defer { phase = .idle }
 
         if let error = outcome.error {
+            phase = .idle
             report(DictationFailure.message(for: error))
             return
         }
 
         let raw = outcome.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if raw.isEmpty {
+            phase = .idle
             report(outcome.timedOut ? DictationFailure.timedOut : DictationFailure.emptyTranscript)
             return
         }
@@ -480,12 +481,17 @@ final class DictationController: ObservableObject {
         let replaced = (dictionary?.applyReplacements(to: cleaned) ?? cleaned)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !replaced.isEmpty else {
+            phase = .idle
             report(DictationFailure.emptyTranscript)
             return
         }
-        let target = FrontmostAppTracker.shared.target()
+        // Names first, so the repair sees the screen's spellings.
         let spelled = ScreenContext.correctingNames(replaced, using: screenTerms)
-        let transcript = AppStyle.styled(spelled, bundleID: target?.bundleID ?? "")
+        let repaired = await SpokenRepair.apply(spelled)
+        guard self.generation == generation else { return }
+        phase = .idle
+        let target = FrontmostAppTracker.shared.target()
+        let transcript = AppStyle.styled(repaired, bundleID: target?.bundleID ?? "")
         indicator?.dictationDidSucceed()
         let insertion = PastePreferences.insertionText(from: transcript)
         let names = Set(screenTerms + (dictionary?.promptTerms() ?? []))

@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
     @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
     @AppStorage(ScreenContext.enabledKey) private var useScreenNames = true
+    @AppStorage(SpokenRepair.repairKey) private var repairSpokenText = false
+    @AppStorage(SpokenRepair.polishKey) private var polishSpokenText = false
     @StateObject private var inputDevices = InputDeviceList()
 
     @State private var apiKey = ""
@@ -147,6 +149,15 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             Toggle("Spell names the way the screen shows them", isOn: $useScreenNames)
             Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Repair spoken text", isOn: $repairSpokenText)
+            Text("Fixes self-corrections, grammar, and obvious transcription mistakes. The transcript is sent to Inworld, and paste waits for the result.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Polish", isOn: $polishSpokenText)
+                .disabled(!repairSpokenText)
+            Text("Also tightens and rephrases, and keeps the meaning.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
