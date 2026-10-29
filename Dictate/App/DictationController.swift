@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import KeyboardShortcuts
 import UserNotifications
@@ -85,6 +86,7 @@ final class DictationController: ObservableObject {
     private var gate = StartGate()
     private var liveTranscript = LiveTranscript()
     private let notices = DictationNoticePresenter()
+    private var askingForMicrophone = false
 
     func startMonitoringShortcut() {
         recorder.onLevel = { [weak self] level in
@@ -208,7 +210,7 @@ final class DictationController: ObservableObject {
     }
 
     private func begin(armedAt: Date? = nil) {
-        guard phase == .idle else { return }
+        guard phase == .idle, !askForMicrophoneIfNeeded() else { return }
         phase = .recording
         stopRequested = false
         recordingStartedAt = nil
@@ -229,6 +231,26 @@ final class DictationController: ObservableObject {
         Task.detached { [weak self] in
             await self?.runSession(generation: generation, recorder: recorder, client: client, gate: gate)
         }
+    }
+
+    /// Until macOS has asked about the microphone, a press only asks. A session that waited on the prompt could see the
+    /// key released before the mic opened, and nothing would stop the mic after that.
+    private func askForMicrophoneIfNeeded() -> Bool {
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else { return false }
+        guard !askingForMicrophone else { return true }
+        askingForMicrophone = true
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.askingForMicrophone = false
+                if granted {
+                    self.notices.post(DictationFailure.microphoneAllowed)
+                } else {
+                    self.report(DictationFailure.microphoneDenied)
+                }
+            }
+        }
+        return true
     }
 
     /// The pill and the start sound come right away. The connection opens alongside them instead of before them.
@@ -319,6 +341,11 @@ final class DictationController: ObservableObject {
             if gate.state == .cancelled {
                 await stopSharedIfIdle(recorder: recorder, client: client)
                 return
+            }
+            // A stop or a dropped connection that came while the mic was still opening found nothing to close, so the
+            // stream would never end. Close it now; audio it already holds is still sent.
+            if await shouldStop(generation) || outcome.snapshot().error != nil {
+                await recorder.stopAndWait()
             }
             // The stream kept everything since the mic opened. Skip the start sound, send the rest.
             let forwardFrom = gate.forwardFrom
