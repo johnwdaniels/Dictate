@@ -52,19 +52,33 @@ enum PromptEchoFilter {
                 position = found.end
                 end = words[position - 1].range.upperBound
             }
-            // The model can stop mid-term. After a comma, a word that only starts a term is that last term.
-            if position > index + 2, position < words.count, isCutOffTerm(words[position], patterns),
-               text[words[position - 1].range.upperBound..<words[position].range.lowerBound].contains(",") {
-                end = words[position].range.upperBound
+            // A label with speech after it and no term, as in "Expected terms: net 30", is speech.
+            guard position > index + 2 || position == words.count else { continue }
+            // The model can stop mid-term. After a comma, words that only start a term are that last term.
+            if position > index + 2, position < words.count,
+               text[words[position - 1].range.upperBound..<words[position].range.lowerBound].contains(","),
+               let length = cutOffTermLength(at: position, in: words, patterns) {
+                end = words[position + length - 1].range.upperBound
             }
-            let separators = text[end...].prefix { ",;: ".contains($0) }
+            let separators = text[end...].prefix { ",;:.!? ".contains($0) }
             return words[index].range.lowerBound..<separators.endIndex
         }
         return nil
     }
 
-    private static func isCutOffTerm(_ word: Word, _ patterns: [Pattern]) -> Bool {
-        patterns.contains { $0.words[0].count > word.key.count && $0.words[0].hasPrefix(word.key) }
+    /// How many words at `position` are the start of a term cut off mid-word, as "T" for "TTS" or "GTM Sa" for "GTM Sage".
+    private static func cutOffTermLength(at position: Int, in words: [Word], _ patterns: [Pattern]) -> Int? {
+        for pattern in patterns {
+            for whole in 0..<pattern.words.count where position + whole < words.count {
+                let full = words[position..<(position + whole)].map(\.key)
+                let last = words[position + whole].key
+                if full == Array(pattern.words[..<whole]),
+                   pattern.words[whole].count > last.count, pattern.words[whole].hasPrefix(last) {
+                    return whole + 1
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: Matching
