@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor
 final class FloatingIndicator: NSObject, FloatingDictationIndicator {
     static let visibilityKey = "indicator.hidden"
+    /// Missing key means on: the pill shows the words as they are heard.
+    static let liveTextKey = "indicator.showLiveText"
 
     private let panel: IndicatorPanel
     private let model = IndicatorModel()
@@ -13,8 +15,8 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
     private var screenObserver: NSObjectProtocol?
 
     override init() {
-        // 20 points around the pill leave room for the glass shadow.
-        panel = IndicatorPanel(contentRect: NSRect(x: 0, y: 0, width: 272, height: 76))
+        // Room for the widest pill plus 20 points around it for the glass shadow.
+        panel = IndicatorPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 76))
         super.init()
         let hosting = ClearHostingView(rootView: FloatingIndicatorPill(model: model))
         hosting.frame = panel.contentView?.bounds ?? .zero
@@ -82,7 +84,9 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
         let fadingIn = !panel.isVisible || panel.alphaValue < 0.01
         panel.orderFrontRegardless()
         model.presented = true
-        if fadingIn {
+        if #available(macOS 26, *) {
+            panel.alphaValue = 1
+        } else if fadingIn {
             panel.alphaValue = 0
             NSAnimationContext.beginGrouping()
             NSAnimationContext.current.duration = 0.18
@@ -100,12 +104,17 @@ final class FloatingIndicator: NSObject, FloatingDictationIndicator {
             try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
             model.presented = false
-            NSAnimationContext.beginGrouping()
-            NSAnimationContext.current.duration = 0.2
-            NSAnimationContext.current.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-            NSAnimationContext.endGrouping()
-            try? await Task.sleep(for: .milliseconds(220))
+            if #available(macOS 26, *) {
+                // Let the glass dissolve before the window goes.
+                try? await Task.sleep(for: .milliseconds(380))
+            } else {
+                NSAnimationContext.beginGrouping()
+                NSAnimationContext.current.duration = 0.2
+                NSAnimationContext.current.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().alphaValue = 0
+                NSAnimationContext.endGrouping()
+                try? await Task.sleep(for: .milliseconds(220))
+            }
             guard !Task.isCancelled, !model.presented else { return }
             panel.orderOut(nil)
             model.phase = .idle
@@ -232,6 +241,110 @@ private enum IndicatorPhase: Equatable {
 
 private struct FloatingIndicatorPill: View {
     @ObservedObject var model: IndicatorModel
+
+    var body: some View {
+        Group {
+            if #available(macOS 26, *) {
+                LiquidGlassPill(model: model)
+            } else {
+                FlatPill(model: model)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+}
+
+/// macOS 26 and later. A glass bubble holds the status; a glass capsule flows out of it for the words. Both sit in one
+/// container, so they merge and split like liquid, and the glass materializes in and dissolves out.
+@available(macOS 26, *)
+private struct LiquidGlassPill: View {
+    @ObservedObject var model: IndicatorModel
+    @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
+    @Namespace private var glass
+
+    private var words: String? {
+        switch model.phase {
+        case .recording: showLiveText && !model.interim.isEmpty ? model.interim : nil
+        case .failure: model.message
+        default: nil
+        }
+    }
+
+    private var tint: Color? {
+        model.phase == .failure ? Color.red.opacity(0.5) : nil
+    }
+
+    var body: some View {
+        GlassEffectContainer(spacing: 10) {
+            if model.presented {
+                HStack(spacing: 6) {
+                    PillStatus(model: model)
+                        .frame(width: 36, height: 36)
+                        .glassEffect(.regular.tint(tint), in: Circle())
+                        .glassEffectID("status", in: glass)
+                        .glassEffectTransition(.materialize)
+                    if let words {
+                        Text(words)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .truncationMode(model.phase == .failure ? .tail : .head)
+                            .padding(.horizontal, 14)
+                            .frame(height: 36)
+                            .frame(maxWidth: 300, alignment: .leading)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .glassEffect(.regular.tint(tint), in: Capsule())
+                            .glassEffectID("words", in: glass)
+                            .glassEffectTransition(.matchedGeometry)
+                    }
+                }
+            }
+        }
+        .animation(.smooth(duration: 0.35), value: model.presented)
+        .animation(.smooth(duration: 0.3), value: words == nil)
+        .animation(.smooth(duration: 0.25), value: model.phase)
+        .animation(.easeOut(duration: 0.12), value: model.levels)
+    }
+}
+
+/// The waveform, spinner, check or warning, in the glass's own vibrant color.
+@available(macOS 26, *)
+private struct PillStatus: View {
+    @ObservedObject var model: IndicatorModel
+
+    var body: some View {
+        ZStack {
+            switch model.phase {
+            case .recording, .idle:
+                HStack(alignment: .center, spacing: 2) {
+                    ForEach(model.levels.indices.suffix(5), id: \.self) { index in
+                        Capsule()
+                            .frame(width: 2.5, height: 3 + model.levels[index] * 14)
+                    }
+                }
+                .foregroundStyle(.primary)
+                .transition(.blurReplace)
+            case .processing:
+                ProgressView()
+                    .controlSize(.small)
+                    .transition(.blurReplace)
+            case .success:
+                Image(systemName: "checkmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .transition(.blurReplace)
+            case .failure:
+                Image(systemName: "exclamationmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .transition(.blurReplace)
+            }
+        }
+    }
+}
+
+/// Before macOS 26: the flat capsule with a hairline edge.
+private struct FlatPill: View {
+    @ObservedObject var model: IndicatorModel
+    @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -240,7 +353,7 @@ private struct FloatingIndicatorPill: View {
                 Spacer(minLength: 0)
             }
             status
-            if model.phase == .recording, !model.interim.isEmpty {
+            if model.phase == .recording, showLiveText, !model.interim.isEmpty {
                 Text(model.interim)
                     .font(.system(size: 12))
                     .lineLimit(1)
@@ -262,17 +375,13 @@ private struct FloatingIndicatorPill: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .frame(width: 232, height: 36)
-        .dictateGlass(
-            in: Capsule(),
-            tint: model.phase == .failure ? Color.red.opacity(0.55) : nil,
-            fallback: fill,
-            edge: foreground.opacity(0.08)
-        )
+        .background(fill, in: Capsule())
+        .overlay {
+            Capsule().strokeBorder(foreground.opacity(0.08), lineWidth: 1)
+        }
         .scaleEffect(model.presented ? 1 : 0.94)
         .animation(.easeOut(duration: 0.18), value: model.presented)
         .animation(.easeOut(duration: 0.12), value: model.levels)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false)
     }
 
     @ViewBuilder
