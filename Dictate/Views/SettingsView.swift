@@ -5,7 +5,7 @@ import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdToTalk.rawValue
+    @AppStorage(DictationListenMode.storageKey) private var listenMode = DictationListenMode.holdOrTap.rawValue
     @AppStorage(DictationLanguage.storageKey) private var languageCode = ""
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
     @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
     @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
     @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
+    @AppStorage(ScreenContext.enabledKey) private var useScreenNames = true
     @AppStorage(SpokenRepair.repairKey) private var repairSpokenText = false
     @AppStorage(SpokenRepair.polishKey) private var polishSpokenText = false
     @StateObject private var inputDevices = InputDeviceList()
@@ -144,6 +145,10 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             Toggle("Format numbers", isOn: $formatNumbers)
             Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Toggle("Spell names the way the screen shows them", isOn: $useScreenNames)
+            Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Toggle("Repair spoken text", isOn: $repairSpokenText)

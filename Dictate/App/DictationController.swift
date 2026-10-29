@@ -21,8 +21,8 @@ enum DictationListenMode: String, CaseIterable, Identifiable {
     static let storageKey = "dictationListenMode"
 
     static var current: DictationListenMode {
-        let raw = UserDefaults.standard.string(forKey: storageKey) ?? DictationListenMode.holdToTalk.rawValue
-        return DictationListenMode(rawValue: raw) ?? .holdToTalk
+        let raw = UserDefaults.standard.string(forKey: storageKey) ?? DictationListenMode.holdOrTap.rawValue
+        return DictationListenMode(rawValue: raw) ?? .holdOrTap
     }
 }
 
@@ -87,6 +87,8 @@ final class DictationController: ObservableObject {
     private var liveTranscript = LiveTranscript()
     private let notices = DictationNoticePresenter()
     private var askingForMicrophone = false
+    /// Names read from the window this session dictates into.
+    private var screenTerms: [String] = []
 
     func startMonitoringShortcut() {
         recorder.onLevel = { [weak self] level in
@@ -227,9 +229,20 @@ final class DictationController: ObservableObject {
         let recorder = recorder
         let client = client
         let gate = gate
+        // Reading the screen starts with the key press, alongside the mic and the connection.
+        screenTerms = []
+        let screenRead = ScreenContext.isEnabled
+            ? ScreenContext.readScreen(target: FrontmostAppTracker.shared.targetProcessID())
+            : nil
 
         Task.detached { [weak self] in
-            await self?.runSession(generation: generation, recorder: recorder, client: client, gate: gate)
+            await self?.runSession(
+                generation: generation,
+                recorder: recorder,
+                client: client,
+                gate: gate,
+                screenRead: screenRead
+            )
         }
     }
 
@@ -277,7 +290,8 @@ final class DictationController: ObservableObject {
         generation: UUID,
         recorder: AudioRecorder,
         client: InworldSTTClient,
-        gate: StartGate
+        gate: StartGate,
+        screenRead: ScreenContext.ScreenRead?
     ) async {
         let apiKey: String?
         let keyNotice: String?
@@ -330,7 +344,27 @@ final class DictationController: ObservableObject {
         var startedSocket = false
         var audioAwaited = false
         do {
-            try await client.start(apiKey: apiKey, language: session.language, prompts: session.prompts)
+            let screenPrompts: (@Sendable () async -> [String])? = screenRead.map { read in
+                { [weak self] in
+                    let strings = await ScreenContext.strings(from: read)
+                    // Sorting the words happens here, off the main thread. Only what the word list doesn't know
+                    // reaches the spell checker on the main thread.
+                    let candidates = ScreenContext.candidates(in: strings)
+                    return await MainActor.run {
+                        let terms = ScreenContext.terms(from: candidates)
+                        if self?.generation == generation {
+                            self?.screenTerms = terms
+                        }
+                        return terms
+                    }
+                }
+            }
+            try await client.start(
+                apiKey: apiKey,
+                language: session.language,
+                prompts: session.prompts,
+                morePrompts: screenPrompts
+            )
             startedSocket = true
             audioAwaited = true
             let stream = try await audioTask.value
@@ -451,16 +485,19 @@ final class DictationController: ObservableObject {
             report(DictationFailure.emptyTranscript)
             return
         }
-        let repaired = await SpokenRepair.apply(replaced)
+        // Names first, so the repair sees the screen's spellings.
+        let spelled = ScreenContext.correctingNames(replaced, using: screenTerms)
+        let repaired = await SpokenRepair.apply(spelled)
         guard self.generation == generation else { return }
         phase = .idle
         let target = FrontmostAppTracker.shared.target()
         let transcript = AppStyle.styled(repaired, bundleID: target?.bundleID ?? "")
         indicator?.dictationDidSucceed()
         let insertion = PastePreferences.insertionText(from: transcript)
+        let names = Set(screenTerms + (dictionary?.promptTerms() ?? []))
         Task { @MainActor in
             do {
-                try await PasteService.paste(insertion)
+                try await PasteService.paste(insertion, names: names)
             } catch {
                 let message = DictationFailure.message(for: error)
                 self.notices.post(message)
