@@ -13,7 +13,7 @@ struct ShortcutsView: View {
             newShortcutSection
             shortcutsSection
         }
-        .formStyle(.grouped)
+        .glassForm()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

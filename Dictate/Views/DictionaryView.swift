@@ -18,7 +18,7 @@ struct DictionaryView: View {
             termsSection
             replacementsSection
         }
-        .formStyle(.grouped)
+        .glassForm()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

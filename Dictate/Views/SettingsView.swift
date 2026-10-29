@@ -52,7 +52,7 @@ struct SettingsView: View {
             permissionsSection
             generalSection
         }
-        .formStyle(.grouped)
+        .glassForm()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             loadKey()
@@ -89,40 +89,52 @@ struct SettingsView: View {
 
     private var shortcutSection: some View {
         Section("Shortcut") {
-            LabeledContent("Dictation") {
+            LabeledContent {
                 ShortcutRecorderField()
                     .fixedSize()
+            } label: {
+                SettingLabel(title: "Dictation", systemImage: "keyboard", color: .blue)
             }
-            Picker("Mode", selection: $listenMode) {
+            Picker(selection: $listenMode) {
                 ForEach(DictationListenMode.allCases) { mode in
                     Text(mode.title).tag(mode.rawValue)
                 }
+            } label: {
+                SettingLabel(
+                    title: "Mode",
+                    subtitle: (DictationListenMode(rawValue: listenMode) ?? .holdOrTap).summary,
+                    systemImage: "hand.tap.fill",
+                    color: .indigo
+                )
             }
-            Text((DictationListenMode(rawValue: listenMode) ?? .holdOrTap).summary)
-                .font(.callout)
-                .foregroundStyle(.secondary)
             if accessibilityStatus != "Allowed", let modifier = ModifierKey.stored(for: .startDictation) {
                 Text("\(modifier.title) on its own needs Accessibility, which is off. Fix it under Permissions below.")
                     .font(.callout)
                     .foregroundStyle(.red)
             }
-            LabeledContent("Open recording") {
+            LabeledContent {
                 ShortcutRecorderField(name: .openRecording)
                     .fixedSize()
+            } label: {
+                SettingLabel(
+                    title: "Open recording",
+                    subtitle: "Press once to start, and again to stop and paste.",
+                    systemImage: "record.circle",
+                    color: .red
+                )
             }
-            Text("Press once to start, and again to stop and paste.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            LabeledContent("Paste last dictation") {
+            LabeledContent {
                 ShortcutRecorderField(name: .pasteLastDictation)
                     .fixedSize()
+            } label: {
+                SettingLabel(title: "Paste last dictation", systemImage: "doc.on.clipboard.fill", color: .teal)
             }
         }
     }
 
     private var microphoneSection: some View {
         Section("Microphone") {
-            Picker("Input device", selection: $inputDeviceUID) {
+            Picker(selection: $inputDeviceUID) {
                 Text(inputDevices.defaultName.isEmpty ? "System default" : "System default (\(inputDevices.defaultName))")
                     .tag("")
                 if !inputDeviceUID.isEmpty, !inputDevices.devices.contains(where: { $0.uid == inputDeviceUID }) {
@@ -131,6 +143,8 @@ struct SettingsView: View {
                 ForEach(inputDevices.devices) { device in
                     Text(device.name).tag(device.uid)
                 }
+            } label: {
+                SettingLabel(title: "Input device", systemImage: "mic.fill", color: .orange)
             }
         }
         .onAppear(perform: inputDevices.startListening)
@@ -139,33 +153,53 @@ struct SettingsView: View {
 
     private var cleanupSection: some View {
         Section("Clean-up") {
-            Toggle("Remove filler words", isOn: $removeFillers)
-            Text("Removes “um”, “uh” and “you know” when it is set off by commas.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Toggle("Format numbers", isOn: $formatNumbers)
-            Text("Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Toggle("Spell names the way the screen shows them", isOn: $useScreenNames)
-            Text("Reads the windows on your screens and sends Inworld only the unusual names on them.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $removeFillers) {
+                SettingLabel(
+                    title: "Remove filler words",
+                    subtitle: "Removes “um”, “uh” and “you know” when it is set off by commas.",
+                    systemImage: "scissors",
+                    color: .pink
+                )
+            }
+            Toggle(isOn: $formatNumbers) {
+                SettingLabel(
+                    title: "Format numbers",
+                    subtitle: "Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.",
+                    systemImage: "number",
+                    color: .purple
+                )
+            }
+            Toggle(isOn: $useScreenNames) {
+                SettingLabel(
+                    title: "Spell names the way the screen shows them",
+                    subtitle: "Reads the windows on your screens and sends Inworld only the unusual names on them.",
+                    systemImage: "text.viewfinder",
+                    color: .blue
+                )
+            }
         }
     }
 
     /// The only settings that send the transcript off the Mac, so they sit apart from the local clean-up.
     private var aiEditingSection: some View {
         Section {
-            Toggle("Fix self-corrections and grammar", isOn: $repairSpokenText)
-            Text("“Tuesday, no, Wednesday” becomes “Wednesday.” Also fixes grammar and misheard words, and otherwise keeps your wording.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Toggle("Also tighten wording", isOn: $polishSpokenText)
+            Toggle(isOn: $repairSpokenText) {
+                SettingLabel(
+                    title: "Fix self-corrections and grammar",
+                    subtitle: "“Tuesday, no, Wednesday” becomes “Wednesday.” Also fixes grammar and misheard words, and otherwise keeps your wording.",
+                    systemImage: "wand.and.stars",
+                    color: .purple
+                )
+            }
+            Toggle(isOn: $polishSpokenText) {
+                SettingLabel(
+                    title: "Also tighten wording",
+                    subtitle: "May shorten and reword sentences while keeping the meaning. Better for messages than for exact wording.",
+                    systemImage: "text.badge.minus",
+                    color: .indigo
+                )
+            }
                 .disabled(!repairSpokenText)
-            Text("May shorten and reword sentences while keeping the meaning. Better for messages than for exact wording.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         } header: {
             Text("AI editing")
         } footer: {
@@ -176,38 +210,50 @@ struct SettingsView: View {
     private var whileDictatingSection: some View {
         Section("While dictating") {
             // Choosing a sound plays it.
-            Picker("Start sound", selection: $startSound) {
+            Picker(selection: $startSound) {
                 ForEach(StartSound.allCases) { sound in
                     Text(sound.title).tag(sound.rawValue)
                 }
+            } label: {
+                SettingLabel(title: "Start sound", systemImage: "speaker.wave.2.fill", color: .pink)
             }
             .onChange(of: startSound) { _, _ in
                 StartChime.play()
             }
-            Toggle("Show the recording pill", isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { !hideIndicator },
                 set: { hideIndicator = !$0 }
-            ))
-            Toggle("Show live text in the pill", isOn: $showLiveText)
+            )) {
+                SettingLabel(title: "Show the recording pill", systemImage: "waveform", color: .green)
+            }
+            Toggle(isOn: $showLiveText) {
+                SettingLabel(title: "Show live text in the pill", systemImage: "text.bubble.fill", color: .cyan)
+            }
                 .disabled(hideIndicator)
         }
     }
 
     private var languageSection: some View {
         Section("Language") {
-            Picker("Language", selection: languageSelection) {
+            Picker(selection: languageSelection) {
                 Text("Auto-detect").tag("")
                 ForEach(DictationLanguage.options, id: \.code) { option in
                     Text(option.name).tag(option.code)
                 }
+            } label: {
+                SettingLabel(title: "Language", systemImage: "globe", color: .blue)
             }
         }
     }
 
     private var pasteSection: some View {
         Section("Paste") {
-            Toggle("Click at mouse position before pasting", isOn: $clickAtMouse)
-            Toggle("Add a trailing space after each dictation", isOn: $trailingSpace)
+            Toggle(isOn: $clickAtMouse) {
+                SettingLabel(title: "Click at mouse position before pasting", systemImage: "cursorarrow.click.2", color: .orange)
+            }
+            Toggle(isOn: $trailingSpace) {
+                SettingLabel(title: "Add a trailing space after each dictation", systemImage: "space", color: .gray)
+            }
             Button(testRunning ? "Pasting…" : "Test paste") {
                 runPasteTest()
             }
@@ -222,7 +268,7 @@ struct SettingsView: View {
 
     private var permissionsSection: some View {
         Section("Permissions") {
-            LabeledContent("Microphone") {
+            LabeledContent {
                 HStack {
                     Text(microphoneStatus)
                         .foregroundStyle(.secondary)
@@ -233,8 +279,10 @@ struct SettingsView: View {
                         .accessibilityLabel("Open Microphone settings")
                     }
                 }
+            } label: {
+                SettingLabel(title: "Microphone", systemImage: "mic.fill", color: .orange)
             }
-            LabeledContent("Accessibility") {
+            LabeledContent {
                 HStack {
                     Text(accessibilityStatus)
                         .foregroundStyle(.secondary)
@@ -246,6 +294,8 @@ struct SettingsView: View {
                         .accessibilityLabel("Open Accessibility settings")
                     }
                 }
+            } label: {
+                SettingLabel(title: "Accessibility", systemImage: "accessibility", color: .blue)
             }
             if accessibilityStatus != "Allowed" {
                 Text(AccessibilityPermission.needsRestartNote)
@@ -260,17 +310,23 @@ struct SettingsView: View {
     }
 
     private var generalSection: some View {
-        Section("General") {
-            Toggle("Launch at login", isOn: Binding(
+        Section {
+            Toggle(isOn: Binding(
                 get: { launchAtLogin },
                 set: { updateLaunchAtLogin($0) }
-            ))
+            )) {
+                SettingLabel(title: "Launch at login", systemImage: "power", color: .green)
+            }
             if let loginStatus {
                 Text(loginStatus)
                     .font(.callout)
                     .foregroundStyle(loginFailed ? Color.red : Color.secondary)
             }
             UpdateRows()
+        } header: {
+            Text("General")
+        } footer: {
+            MadeWithLove()
         }
     }
 
@@ -403,27 +459,56 @@ struct SettingsView: View {
     }
 }
 
+/// The sign-off at the very bottom of Settings.
+private struct MadeWithLove: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 44, height: 44)
+            HStack(spacing: 5) {
+                Text("A Labor of Love from John & Pedro")
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(.pink)
+                    .symbolEffect(.pulse)
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 28)
+        .padding(.bottom, 12)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// Sparkle's automatic updates, in the General section.
 private struct UpdateRows: View {
     @ObservedObject private var updater = AppUpdater.shared
 
     var body: some View {
-        Toggle("Check for updates automatically", isOn: Binding(
+        Toggle(isOn: Binding(
             get: { updater.automaticallyChecksForUpdates },
             set: { updater.automaticallyChecksForUpdates = $0 }
-        ))
-        Toggle("Download and install updates automatically", isOn: Binding(
+        )) {
+            SettingLabel(title: "Check for updates automatically", systemImage: "arrow.triangle.2.circlepath", color: .blue)
+        }
+        Toggle(isOn: Binding(
             get: { updater.automaticallyDownloadsUpdates },
             set: { updater.automaticallyDownloadsUpdates = $0 }
-        ))
+        )) {
+            SettingLabel(title: "Download and install updates automatically", systemImage: "arrow.down.circle.fill", color: .indigo)
+        }
         .disabled(!updater.automaticallyChecksForUpdates)
-        LabeledContent("Version") {
+        LabeledContent {
             HStack {
                 Text(AppUpdater.currentVersion)
                     .foregroundStyle(.secondary)
                 Button("Check for Updates…", action: updater.checkForUpdates)
                     .disabled(!updater.canCheckForUpdates)
             }
+        } label: {
+            SettingLabel(title: "Version", systemImage: "info", color: .gray)
         }
     }
 }

@@ -52,7 +52,7 @@ xcodebuild -project Dictate.xcodeproj -scheme Dictate -destination 'platform=mac
 
 While Dictate is only in the menu bar there is no Dock icon. Opening the window makes it a normal app so it can take keyboard focus. Closing the window hides the Dock icon again. The menu bar item contains **Open Dictate** and **Quit**.
 
-The global shortcut starts dictation. It starts as Hold or tap: hold the shortcut to talk, or tap it to start and tap again to stop. Hold to talk and Toggle are in Settings. The shortcut starts as Option-Space and can be changed there. A shortcut must include a modifier. The Debug tab can still record a clip on its own and keeps its key separate from the one used by the shortcut.
+The global shortcut starts dictation. It starts as Hold or tap: hold the shortcut to talk, or tap it to start and tap again to stop. Hold to talk and Toggle are in Settings. The shortcut starts as Option-Space and can be changed there. A shortcut must include a modifier.
 
 ## Inworld API key
 
