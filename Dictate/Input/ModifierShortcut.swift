@@ -73,10 +73,13 @@ enum ModifierKey: String, CaseIterable, Sendable {
 
 /// Turns presses of one modifier into shortcut presses and releases.
 ///
-/// Any other key while the modifier is held, before the hold delay, means the person is typing a chord such as ⌥E,
-/// so nothing is reported. A clean tap reports a press and a release together when the key comes up.
+/// Key-down reports `armed` right away, so dictation can start the mic and connection without waiting. Any other key
+/// while the modifier is held, before the hold delay, means the person is typing a chord such as ⌥E, which reports
+/// `disarmed` and nothing else. A clean tap reports a press and a release together when the key comes up.
 struct ModifierTapTracker {
     enum Output: Equatable {
+        case armed(Date)
+        case disarmed
         case pressed(Date)
         case released(Date)
     }
@@ -90,15 +93,17 @@ struct ModifierTapTracker {
 
     var isHeld: Bool { downAt != nil }
 
-    mutating func modifierDown(at time: Date) {
+    mutating func modifierDown(at time: Date) -> [Output] {
         downAt = time
         chorded = false
         announced = false
+        return [.armed(time)]
     }
 
-    mutating func otherInput() {
-        guard downAt != nil, !announced else { return }
+    mutating func otherInput() -> [Output] {
+        guard downAt != nil, !announced, !chorded else { return [] }
         chorded = true
+        return [.disarmed]
     }
 
     mutating func holdElapsed() -> [Output] {
@@ -130,6 +135,8 @@ struct ModifierTapTracker {
 @MainActor
 final class ModifierShortcutMonitor {
     private let name: KeyboardShortcuts.Name
+    private let onArm: (Date) -> Void
+    private let onDisarm: () -> Void
     private let onPress: (Date) -> Void
     private let onRelease: (Date) -> Void
     private var tracker = ModifierTapTracker()
@@ -137,8 +144,16 @@ final class ModifierShortcutMonitor {
     private var holdTimer: DispatchWorkItem?
     private var monitors: [Any] = []
 
-    init(name: KeyboardShortcuts.Name, onPress: @escaping (Date) -> Void, onRelease: @escaping (Date) -> Void) {
+    init(
+        name: KeyboardShortcuts.Name,
+        onArm: @escaping (Date) -> Void = { _ in },
+        onDisarm: @escaping () -> Void = {},
+        onPress: @escaping (Date) -> Void,
+        onRelease: @escaping (Date) -> Void
+    ) {
         self.name = name
+        self.onArm = onArm
+        self.onDisarm = onDisarm
         self.onPress = onPress
         self.onRelease = onRelease
     }
@@ -170,7 +185,7 @@ final class ModifierShortcutMonitor {
             let down = key.isDown(flags: input.flags)
             if down, heldKey == nil {
                 heldKey = key
-                tracker.modifierDown(at: input.time)
+                emit(tracker.modifierDown(at: input.time))
                 scheduleHold()
             } else if !down, heldKey == key {
                 heldKey = nil
@@ -178,7 +193,7 @@ final class ModifierShortcutMonitor {
                 emit(tracker.modifierUp(at: input.time))
             }
         } else if heldKey != nil {
-            tracker.otherInput()
+            emit(tracker.otherInput())
         }
     }
 
@@ -198,11 +213,14 @@ final class ModifierShortcutMonitor {
         holdTimer?.cancel()
         heldKey = nil
         tracker.reset()
+        onDisarm()
     }
 
     private func emit(_ outputs: [ModifierTapTracker.Output]) {
         for output in outputs {
             switch output {
+            case .armed(let time): onArm(time)
+            case .disarmed: onDisarm()
             case .pressed(let time): onPress(time)
             case .released(let time): onRelease(time)
             }
