@@ -12,15 +12,59 @@ enum PromptEchoFilter {
     static func filter(_ segment: String, terms: [String], isFirstSegment: Bool) -> String {
         let patterns = Pattern.make(terms)
         guard !patterns.isEmpty else { return segment }
-        let words = Word.split(segment)
-        guard !words.isEmpty else { return segment }
+        let unlabeled = removingHeaderedLists(segment, patterns: patterns)
+        let words = Word.split(unlabeled)
+        guard !words.isEmpty else { return unlabeled == segment ? segment : "" }
 
         let matches = match(words, patterns)
         // Every word belongs to a term. Two or more terms, or a lone term after earlier speech, is an echo.
         if let matches, matches.count >= 2 || (matches.count == 1 && !isFirstSegment) {
             return ""
         }
-        return trimmingOrderedRuns(segment, words: words, patterns: patterns)
+        return trimmingOrderedRuns(unlabeled, words: words, patterns: patterns)
+    }
+
+    // MARK: Label
+
+    /// Inworld can echo the prompt under its own label, as in "Expected terms: Kylan, Cheryl, Inworld, T I bet".
+    /// The label, the terms after it in any order and a cut-off last term are removed. Speech on either side stays.
+    private static func removingHeaderedLists(_ segment: String, patterns: [Pattern]) -> String {
+        var text = segment
+        while let cut = headeredList(in: text, patterns: patterns) {
+            let before = text[..<cut.lowerBound].trimmingCharacters(in: .whitespaces)
+            let after = text[cut.upperBound...].trimmingCharacters(in: .whitespaces)
+            text = before.isEmpty || after.isEmpty ? before + after : before + " " + after
+        }
+        return text
+    }
+
+    /// The range of the first "Expected terms:" label and the list that follows it.
+    private static func headeredList(in text: String, patterns: [Pattern]) -> Range<String.Index>? {
+        let words = Word.split(text)
+        guard words.count >= 2 else { return nil }
+        for index in 0..<(words.count - 1) where words[index].key == "expected" && words[index + 1].key == "terms" {
+            let label = text[words[index + 1].range.upperBound...].drop { $0 == " " }
+            guard label.first == ":" else { continue }
+
+            var end = text.index(after: label.startIndex)
+            var position = index + 2
+            while position < words.count, let found = term(at: position, in: words, patterns) {
+                position = found.end
+                end = words[position - 1].range.upperBound
+            }
+            // The model can stop mid-term. After a comma, a word that only starts a term is that last term.
+            if position > index + 2, position < words.count, isCutOffTerm(words[position], patterns),
+               text[words[position - 1].range.upperBound..<words[position].range.lowerBound].contains(",") {
+                end = words[position].range.upperBound
+            }
+            let separators = text[end...].prefix { ",;: ".contains($0) }
+            return words[index].range.lowerBound..<separators.endIndex
+        }
+        return nil
+    }
+
+    private static func isCutOffTerm(_ word: Word, _ patterns: [Pattern]) -> Bool {
+        patterns.contains { $0.words[0].count > word.key.count && $0.words[0].hasPrefix(word.key) }
     }
 
     // MARK: Matching
