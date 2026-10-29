@@ -18,6 +18,15 @@ enum DictationListenMode: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One line under the mode picker, for the mode that is chosen.
+    var summary: String {
+        switch self {
+        case .holdToTalk: "Records while you hold the shortcut."
+        case .toggle: "Press once to start, and again to stop."
+        case .holdOrTap: "Hold to record until you let go, or tap to start and tap again to stop."
+        }
+    }
+
     static let storageKey = "dictationListenMode"
 
     static var current: DictationListenMode {

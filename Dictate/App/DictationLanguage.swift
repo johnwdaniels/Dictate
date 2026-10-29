@@ -5,7 +5,6 @@ import Foundation
 enum DictationLanguage {
     static let storageKey = "dictation.language"
     static let defaultCode = "en"
-    static let documentationURL = URL(string: "https://docs.inworld.ai/stt/languages")!
 
     /// Codes from Inworld's Language Support page for `inworld/inworld-stt-1-preview`.
     static let options: [(name: String, code: String)] = [
