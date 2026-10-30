@@ -13,7 +13,8 @@ final class DictationHistoryStore: DictationHistorySaving {
         _ text: String,
         durationSeconds: Double,
         appName: String,
-        bundleID: String
+        bundleID: String,
+        screenHints: [String]
     ) throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -23,7 +24,8 @@ final class DictationHistoryStore: DictationHistorySaving {
             durationSeconds: max(0, durationSeconds),
             wordCount: DictationEntry.wordCount(in: trimmed),
             destinationAppName: appName.trimmingCharacters(in: .whitespacesAndNewlines),
-            destinationBundleID: bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+            destinationBundleID: bundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+            screenHints: screenHints
         )
         let context = container.mainContext
         context.insert(entry)

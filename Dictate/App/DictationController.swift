@@ -54,7 +54,8 @@ protocol DictationHistorySaving: AnyObject {
         _ text: String,
         durationSeconds: Double,
         appName: String,
-        bundleID: String
+        bundleID: String,
+        screenHints: [String]
     ) throws
     func latestDictationText() -> String?
 }
@@ -593,7 +594,8 @@ final class DictationController: ObservableObject {
                 transcript,
                 durationSeconds: duration,
                 appName: target?.name ?? "",
-                bundleID: target?.bundleID ?? ""
+                bundleID: target?.bundleID ?? "",
+                screenHints: screenWords.hints
             )
         } catch {
             notices.post("Couldn't save this dictation to history.")

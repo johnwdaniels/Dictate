@@ -136,4 +136,22 @@ final class ScreenContextTests: XCTestCase {
         XCTAssertEqual(ScreenContext.soundKey("Nicki"), ScreenContext.soundKey("Nikki"))
         XCTAssertNotEqual(ScreenContext.soundKey("Ask"), ScreenContext.soundKey("Arx"))
     }
+
+    func testHintsRankNewestNearTheFieldFirstAndSkipTheUsersName() {
+        let target = ScreenContext.WindowText(
+            strings: [
+                "Kylan joined", "Zhaoyi: old message", "Nikki: are we still on with Arx Media?", "Message Nikki",
+                "Brittni", "Pedro Pizarro", "PocketFM",
+            ],
+            nearCount: 4
+        )
+        let ranked = ScreenContext.ranked(
+            ["Kylan", "Zhaoyi", "Nikki", "PocketFM", "Arx", "Pedro", "Brittni", "Elsewhere"],
+            phrases: ["Arx Media"],
+            in: target.strings + ["Arx Media deck", "Kylan", "Elsewhere"],
+            target: target,
+            ownName: ["Pedro", "Pizarro"]
+        )
+        XCTAssertEqual(ranked, ["Arx", "Nikki", "Kylan", "Zhaoyi", "PocketFM", "Brittni"])
+    }
 }

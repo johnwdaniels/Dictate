@@ -63,9 +63,15 @@ enum ScreenContext {
     /// Starts reading the focused window of `pid`, or with `wholeApp` all of its open windows, in the background.
     @discardableResult
     static func read(pid: pid_t, wholeApp: Bool = false) -> [String] {
-        let strings = readStrings(pid: pid, wholeApp: wholeApp)
-        cache.store(strings, for: pid)
-        return strings
+        let text = readStrings(pid: pid, wholeApp: wholeApp)
+        cache.store(text, for: pid)
+        return text.strings
+    }
+
+    /// One app's text in reading order. The first `nearCount` strings come from around the field being typed in.
+    struct WindowText: Sendable {
+        var strings: [String] = []
+        var nearCount = 0
     }
 
     /// The text of every app in `read`, from this read where it finished within `wait`, or else from its last one.
@@ -82,7 +88,7 @@ enum ScreenContext {
             }
         }
         let pids = read.order.pids ?? read.target.map { [$0] } ?? []
-        return pids.flatMap { cache.strings(for: $0) }
+        return pids.flatMap { cache.text(for: $0).strings }
     }
 
     /// Apps with a normal window showing on any display, front to back. Window titles would need Screen Recording;
@@ -216,14 +222,63 @@ enum ScreenContext {
     /// Hints from the window being typed in, and terms and phrases from every window, for fixing the transcript.
     static func words(from read: ScreenRead) async -> Words {
         let strings = await strings(from: read)
-        let near = Set(candidates(in: read.target.map { cache.strings(for: $0) } ?? []).map(\.word))
+        let target = read.target.map { cache.text(for: $0) } ?? WindowText()
         // Sorting the words happens here, off the main thread. Only words that might be names reach the spell checker
         // on the main thread, and the screen's words are usually already checked by the time a dictation starts.
         let found = candidates(in: strings)
         let terms = await MainActor.run { Self.terms(from: found) }
         let phrases = phrases(in: strings, containing: terms)
-        let nearTerms = near.isEmpty ? terms : terms.filter(near.contains)
-        return Words(hints: hints(from: nearTerms, phrases: phrases), terms: terms, phrases: phrases)
+        let ranked = ranked(terms, phrases: phrases, in: strings, target: target, ownName: ownName)
+        return Words(hints: hints(from: ranked, phrases: phrases), terms: terms, phrases: phrases)
+    }
+
+    /// The Mac user's own name. It's on screen everywhere and rarely said, so it never takes a hint.
+    private static let ownName = Set(NSFullUserName().split(separator: " ").map(String.init))
+
+    /// The terms of the window being typed in, most likely to be said first. Scored by, in order of weight:
+    /// being near the field, and lower down there, where the newest messages are; showing up often; being a full or
+    /// oddly spelled name, such as "Arx Media" or "PocketFM"; and showing in another app too. Without the window's
+    /// text, every term is scored.
+    static func ranked(
+        _ terms: [String],
+        phrases: [String],
+        in strings: [String],
+        target: WindowText,
+        ownName: Set<String> = []
+    ) -> [String] {
+        let termSet = Set(terms)
+        func occurrences(in strings: ArraySlice<String>, _ found: (String, Int) -> Void) {
+            for (index, string) in zip(strings.indices, strings) {
+                for piece in string.split(whereSeparator: { $0.isWhitespace || $0 == "/" }) {
+                    if let word = cleaned(piece), termSet.contains(word) { found(word, index) }
+                }
+            }
+        }
+        var counts: [String: Int] = [:]
+        occurrences(in: strings[...]) { word, _ in counts[word, default: 0] += 1 }
+        var inWindow: [String: Int] = [:]
+        occurrences(in: target.strings[...]) { word, _ in inWindow[word, default: 0] += 1 }
+        var lastNear: [String: Int] = [:]
+        occurrences(in: target.strings.prefix(target.nearCount)) { word, index in lastNear[word] = index }
+        let phraseWords = Set(phrases.flatMap { $0.split(separator: " ").map(String.init) })
+
+        func score(_ term: String) -> Double {
+            var score = min(Double(counts[term] ?? 0), 6) * 0.5
+            if let index = lastNear[term] {
+                score += 2 + 3 * Double(index + 1) / Double(max(target.nearCount, 1))
+            }
+            if phraseWords.contains(term) || term.dropFirst().contains(where: { $0.isUppercase || $0.isNumber }) {
+                score += 1.5
+            }
+            if (counts[term] ?? 0) > (inWindow[term] ?? 0) { score += 1 }
+            return score
+        }
+        let pool = target.strings.isEmpty ? terms : terms.filter { inWindow[$0] != nil }
+        return pool.enumerated()
+            .filter { !ownName.contains($0.element) }
+            .map { (term: $0.element, order: $0.offset, score: score($0.element)) }
+            .sorted { $0.score != $1.score ? $0.score > $1.score : $0.order < $1.order }
+            .map(\.term)
     }
 
     private static let edgePunctuation = CharacterSet(charactersIn: ".,;:!?()[]{}<>\"'“”‘’*…")
@@ -509,7 +564,7 @@ enum ScreenContext {
             Task.detached(priority: .utility) {
                 _ = WordList.words.count
                 await screen.task.value
-                await warmSpelling((screen.order.pids ?? []).flatMap { cache.strings(for: $0) })
+                await warmSpelling((screen.order.pids ?? []).flatMap { cache.text(for: $0).strings })
             }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -527,7 +582,7 @@ enum ScreenContext {
 
     // MARK: - Reading the window
 
-    private static func readStrings(pid: pid_t, wholeApp: Bool) -> [String] {
+    private static func readStrings(pid: pid_t, wholeApp: Bool) -> WindowText {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.2)
         // Chrome and Electron apps only expose web content once an assistive app asks for it.
@@ -556,30 +611,35 @@ enum ScreenContext {
         }
 
         let attributes = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXChildrenAttribute] as CFArray
-        var queue = roots
-        var index = 0
         var visited = Set<AXUIElement>()
         var strings: [String] = []
         var characters = 0
-        while index < queue.count, visited.count < maximumNodes, characters < maximumCharacters,
-              CFAbsoluteTimeGetCurrent() < deadline {
-            let node = queue[index]
-            index += 1
-            guard visited.insert(node).inserted else { continue }
-            var values: CFArray?
-            guard AXUIElementCopyMultipleAttributeValues(node, attributes, [], &values) == .success,
-                  let values = values as? [AnyObject] else { continue }
-            for value in values {
-                if let string = value as? String, !string.isEmpty {
-                    let piece = String(string.prefix(2_000))
-                    strings.append(piece)
-                    characters += piece.count
-                } else if let children = value as? [AXUIElement] {
-                    queue.append(contentsOf: children)
+        var nearCount = 0
+        // One root at a time, so the area around the field is read in full before the rest of the window.
+        for (rootIndex, root) in roots.enumerated() {
+            var queue = [root]
+            var index = 0
+            while index < queue.count, visited.count < maximumNodes, characters < maximumCharacters,
+                  CFAbsoluteTimeGetCurrent() < deadline {
+                let node = queue[index]
+                index += 1
+                guard visited.insert(node).inserted else { continue }
+                var values: CFArray?
+                guard AXUIElementCopyMultipleAttributeValues(node, attributes, [], &values) == .success,
+                      let values = values as? [AnyObject] else { continue }
+                for value in values {
+                    if let string = value as? String, !string.isEmpty {
+                        let piece = String(string.prefix(2_000))
+                        strings.append(piece)
+                        characters += piece.count
+                    } else if let children = value as? [AXUIElement] {
+                        queue.append(contentsOf: children)
+                    }
                 }
             }
+            if rootIndex == 0, !wholeApp { nearCount = strings.count }
         }
-        return strings
+        return WindowText(strings: strings, nearCount: nearCount)
     }
 
     private static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
@@ -630,14 +690,14 @@ final class AppOrder: @unchecked Sendable {
 /// The last read of each app, used when this read is still going.
 private final class LastRead: @unchecked Sendable {
     private let lock = NSLock()
-    private var reads: [pid_t: [String]] = [:]
+    private var reads: [pid_t: ScreenContext.WindowText] = [:]
 
-    func store(_ strings: [String], for pid: pid_t) {
-        lock.withLock { reads[pid] = strings }
+    func store(_ text: ScreenContext.WindowText, for pid: pid_t) {
+        lock.withLock { reads[pid] = text }
     }
 
-    func strings(for pid: pid_t) -> [String] {
-        lock.withLock { reads[pid] ?? [] }
+    func text(for pid: pid_t) -> ScreenContext.WindowText {
+        lock.withLock { reads[pid] ?? ScreenContext.WindowText() }
     }
 }
 

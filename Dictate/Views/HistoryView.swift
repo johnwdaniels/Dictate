@@ -136,6 +136,13 @@ private struct HistoryList: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+            if expanded, !entry.screenHints.isEmpty {
+                Label(entry.screenHints, systemImage: "text.viewfinder")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .help("Names from your screen sent to Inworld with this dictation")
+            }
+
             HStack(spacing: 8) {
                 if !entry.destinationAppName.isEmpty {
                     Text(entry.destinationAppName)
