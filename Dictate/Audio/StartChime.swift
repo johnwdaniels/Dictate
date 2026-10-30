@@ -94,10 +94,6 @@ enum StartChime {
 
     /// How long the selected sound rings. Callers wait this long before sending microphone audio.
     static var ringDuration: TimeInterval { StartSound.current.duration }
-
-    /// Extra wait after the mic's first buffer before the sound plays, while an audio interface finishes switching over.
-    static let settle = Duration.milliseconds(60)
-
     static func play() {
         let choice = StartSound.current
         guard choice != .off, let sound = cached(choice) else { return }
