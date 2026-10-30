@@ -28,6 +28,12 @@ final class StartSoundTests: XCTestCase {
         XCTAssertEqual(StartSound.current, .off)
     }
 
+    func testWaitingForTheMicGivesUpWhenNoAudioArrives() async {
+        let started = CFAbsoluteTimeGetCurrent()
+        await AudioRecorder().waitUntilRunning(timeout: 0.05)
+        XCTAssertLessThan(CFAbsoluteTimeGetCurrent() - started, 0.5)
+    }
+
     func testARetiredChoiceIsRewrittenAndCurrentOnesAreKept() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "StartSoundTests"))
         defer { defaults.removePersistentDomain(forName: "StartSoundTests") }

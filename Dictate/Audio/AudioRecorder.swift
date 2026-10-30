@@ -16,6 +16,12 @@ final class AudioRecorder: @unchecked Sendable {
     private var continuation: AsyncStream<AudioChunk>.Continuation?
     private var tapInstalled = false
     private var lastLevelSent = CFAbsoluteTime(0)
+    private let flowLock = NSLock()
+    private var flowing = false
+    private var flowWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var cycleNotifyUnit: AudioUnit?
+    /// Read and written only on the audio thread while the engine runs, and reset before it starts.
+    fileprivate var cycleSeen = false
 
     /// Called on the main queue, at most 30 times a second, with a level from 0 (silence) to 1.
     var onLevel: (@Sendable (Float) -> Void)?
@@ -27,6 +33,25 @@ final class AudioRecorder: @unchecked Sendable {
         }
         return try await MainActor.run {
             try self.openEngine()
+        }
+    }
+
+    /// Returns on the mic hardware's first processing cycle, the earliest moment it is really running, a few ms in.
+    /// `start()` returns earlier, while a headset or an audio interface may still be switching over. Gives up after `timeout`.
+    func waitUntilRunning(timeout: TimeInterval = 0.5) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let id = UUID()
+            flowLock.lock()
+            guard !flowing else {
+                flowLock.unlock()
+                continuation.resume()
+                return
+            }
+            flowWaiters[id] = continuation
+            flowLock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
+                self?.resumeFlowWaiters(only: id)
+            }
         }
     }
 
@@ -74,6 +99,7 @@ final class AudioRecorder: @unchecked Sendable {
 
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
+            self.setFlowing(true)
             self.publishLevel(buffer)
             guard let data = self.convert(buffer) else { return }
             let seconds = Double(buffer.frameLength) / max(buffer.format.sampleRate, 1)
@@ -81,6 +107,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
         tapInstalled = true
 
+        addCycleNotify()
         do {
             engine.prepare()
             try engine.start()
@@ -109,7 +136,49 @@ final class AudioRecorder: @unchecked Sendable {
         engine.reset()
     }
 
+    /// Flips the flowing flag. Turning it on or off releases anyone waiting, so a closed mic never leaves a waiter hanging.
+    private func setFlowing(_ value: Bool) {
+        flowLock.lock()
+        guard flowing != value || !flowWaiters.isEmpty else {
+            flowLock.unlock()
+            return
+        }
+        flowing = value
+        let waiters = flowWaiters.values
+        flowWaiters.removeAll()
+        flowLock.unlock()
+        waiters.forEach { $0.resume() }
+    }
+
+    private func resumeFlowWaiters(only id: UUID) {
+        flowLock.lock()
+        let waiter = flowWaiters.removeValue(forKey: id)
+        flowLock.unlock()
+        waiter?.resume()
+    }
+
+    /// Watches the input unit's render cycles. The first one marks the hardware as running, well before a tap buffer fills.
+    private func addCycleNotify() {
+        guard let unit = engine.inputNode.audioUnit else { return }
+        cycleSeen = false
+        if AudioUnitAddRenderNotify(unit, firstCycleNotify, Unmanaged.passUnretained(self).toOpaque()) == noErr {
+            cycleNotifyUnit = unit
+        }
+    }
+
+    /// Called on the audio thread. Takes the lock only once per session.
+    fileprivate func noteCycle() {
+        guard !cycleSeen else { return }
+        cycleSeen = true
+        setFlowing(true)
+    }
+
     private func closeEngine() {
+        if let unit = cycleNotifyUnit {
+            AudioUnitRemoveRenderNotify(unit, firstCycleNotify, Unmanaged.passUnretained(self).toOpaque())
+            cycleNotifyUnit = nil
+        }
+        setFlowing(false)
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -182,4 +251,11 @@ final class AudioRecorder: @unchecked Sendable {
         guard let converter, let targetFormat else { return nil }
         return PCMConversion.convert(buffer, using: converter, to: targetFormat)
     }
+}
+
+/// Render notify on the input unit. Only the post-render call counts: by then the hardware has delivered a cycle.
+private let firstCycleNotify: AURenderCallback = { refCon, flags, _, _, _, _ in
+    guard flags.pointee.contains(.unitRenderAction_PostRender) else { return noErr }
+    Unmanaged<AudioRecorder>.fromOpaque(refCon).takeUnretainedValue().noteCycle()
+    return noErr
 }

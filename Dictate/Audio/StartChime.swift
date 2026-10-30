@@ -94,7 +94,6 @@ enum StartChime {
 
     /// How long the selected sound rings. Callers wait this long before sending microphone audio.
     static var ringDuration: TimeInterval { StartSound.current.duration }
-
     static func play() {
         let choice = StartSound.current
         guard choice != .off, let sound = cached(choice) else { return }
