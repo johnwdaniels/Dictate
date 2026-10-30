@@ -75,4 +75,16 @@ final class ScreenContextTests: XCTestCase {
         XCTAssertEqual(lower("Pedro said yes", []), "pedro said yes")
         XCTAssertEqual(lower("Pedro said yes", ["Pedro"]), "Pedro said yes")
     }
+
+    @MainActor
+    func testFirstNamesTheSpellCheckerAcceptsStillCountAsNames() {
+        for name in ["nikki", "jessica", "liam"] {
+            XCTAssertFalse(ScreenContext.isEnglishWord(name), name)
+        }
+        for word in ["email", "website", "settings", "message"] {
+            XCTAssertTrue(ScreenContext.isEnglishWord(word), word)
+        }
+        let candidates = ScreenContext.candidates(in: ["Message Nikki", "Settings"], wordList: [])
+        XCTAssertEqual(ScreenContext.terms(from: candidates), ["Nikki"])
+    }
 }

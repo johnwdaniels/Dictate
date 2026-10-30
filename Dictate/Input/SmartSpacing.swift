@@ -67,18 +67,13 @@ enum SmartSpacing {
         }
         var result = text
         if let before, continuesSentence(before) {
-            result = lowercasingFirstWord(result, keeping: names, isKnownWord: isEnglishWord)
+            result = lowercasingFirstWord(result, keeping: names, isKnownWord: ScreenContext.isEnglishWord)
         }
         result = spaced(result, after: before?.last)
         if !result.isEmpty {
             lastPaste = (bundleID, now, String(result.suffix(lookBack)))
         }
         return result
-    }
-
-    @MainActor
-    private static func isEnglishWord(_ word: String) -> Bool {
-        NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
     }
 
     private enum Before {

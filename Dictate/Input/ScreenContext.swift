@@ -260,16 +260,34 @@ enum ScreenContext {
         return previous[b.count]
     }
 
-    /// The spell checker takes about a tenth of a millisecond per word, and a window repeats most of its words.
+    /// The spell checker takes a tenth of a millisecond per word, two when it also has to list completions, and a
+    /// window repeats most of its words.
     @MainActor private static var knownWords: [String: Bool] = [:]
 
+    /// Whether `word`, lowercased, is an ordinary English word. The spell checker also accepts first names such as
+    /// "nikki", so a word it knows only counts when it also offers it as a completion, which it never does for names.
+    /// Names that are ordinary words too, such as "Mark" or "Grace", count as words: they are spelled the same.
     @MainActor
     static func isEnglishWord(_ word: String) -> Bool {
         if let known = knownWords[word] { return known }
-        let known = NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
+        let checker = NSSpellChecker.shared
+        var known = checker.checkSpelling(of: word, startingAt: 0).location == NSNotFound
+        if known {
+            let range = NSRange(location: 0, length: (word as NSString).length)
+            let completions = checker.completions(
+                forPartialWordRange: range, in: word, language: "en", inSpellDocumentWithTag: 0
+            ) ?? []
+            known = completions.contains(word)
+        }
         if knownWords.count > 20_000 { knownWords.removeAll() }
         knownWords[word] = known
         return known
+    }
+
+    /// Runs the screen's words past the spell checker while nobody is dictating, so a dictation finds them answered.
+    private static func warmSpelling(_ strings: [String]) async {
+        let found = candidates(in: strings)
+        await MainActor.run { _ = terms(from: found) }
     }
 
     /// Reads the whole screen once at launch, then each app's window when it comes to the front, so the first dictation
@@ -277,8 +295,12 @@ enum ScreenContext {
     @MainActor
     static func startWarming() {
         if isEnabled {
-            _ = readScreen(target: nil)
-            Task.detached(priority: .utility) { _ = WordList.words.count }
+            let screen = readScreen(target: nil)
+            Task.detached(priority: .utility) {
+                _ = WordList.words.count
+                await screen.task.value
+                await warmSpelling((screen.order.pids ?? []).flatMap { cache.strings(for: $0) })
+            }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -289,7 +311,7 @@ enum ScreenContext {
                   let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
             let pid = app.processIdentifier
-            Task.detached(priority: .utility) { read(pid: pid) }
+            Task.detached(priority: .utility) { await warmSpelling(read(pid: pid)) }
         }
     }
 
