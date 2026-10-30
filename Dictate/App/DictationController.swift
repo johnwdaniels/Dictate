@@ -404,6 +404,9 @@ final class DictationController: ObservableObject {
         }
         let audioTask = Task {
             let stream = try await recorder.start()
+            // The mic reports open before the hardware settles, and a sound played then pops. Wait for real audio.
+            await recorder.waitForFirstBuffer()
+            try? await Task.sleep(for: StartChime.settle)
             await MainActor.run { self.micDidOpen(generation: generation) }
             return stream
         }

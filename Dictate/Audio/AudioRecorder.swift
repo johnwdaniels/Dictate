@@ -16,6 +16,9 @@ final class AudioRecorder: @unchecked Sendable {
     private var continuation: AsyncStream<AudioChunk>.Continuation?
     private var tapInstalled = false
     private var lastLevelSent = CFAbsoluteTime(0)
+    private let flowLock = NSLock()
+    private var flowing = false
+    private var flowWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     /// Called on the main queue, at most 30 times a second, with a level from 0 (silence) to 1.
     var onLevel: (@Sendable (Float) -> Void)?
@@ -27,6 +30,25 @@ final class AudioRecorder: @unchecked Sendable {
         }
         return try await MainActor.run {
             try self.openEngine()
+        }
+    }
+
+    /// Returns once the microphone delivers its first buffer, which is when the audio hardware is really running.
+    /// `start()` returns earlier, while a headset or an audio interface may still be switching over. Gives up after `timeout`.
+    func waitForFirstBuffer(timeout: TimeInterval = 0.5) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let id = UUID()
+            flowLock.lock()
+            guard !flowing else {
+                flowLock.unlock()
+                continuation.resume()
+                return
+            }
+            flowWaiters[id] = continuation
+            flowLock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
+                self?.resumeFlowWaiters(only: id)
+            }
         }
     }
 
@@ -74,6 +96,7 @@ final class AudioRecorder: @unchecked Sendable {
 
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
+            self.setFlowing(true)
             self.publishLevel(buffer)
             guard let data = self.convert(buffer) else { return }
             let seconds = Double(buffer.frameLength) / max(buffer.format.sampleRate, 1)
@@ -109,7 +132,29 @@ final class AudioRecorder: @unchecked Sendable {
         engine.reset()
     }
 
+    /// Flips the flowing flag. Turning it on or off releases anyone waiting, so a closed mic never leaves a waiter hanging.
+    private func setFlowing(_ value: Bool) {
+        flowLock.lock()
+        guard flowing != value || !flowWaiters.isEmpty else {
+            flowLock.unlock()
+            return
+        }
+        flowing = value
+        let waiters = flowWaiters.values
+        flowWaiters.removeAll()
+        flowLock.unlock()
+        waiters.forEach { $0.resume() }
+    }
+
+    private func resumeFlowWaiters(only id: UUID) {
+        flowLock.lock()
+        let waiter = flowWaiters.removeValue(forKey: id)
+        flowLock.unlock()
+        waiter?.resume()
+    }
+
     private func closeEngine() {
+        setFlowing(false)
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
