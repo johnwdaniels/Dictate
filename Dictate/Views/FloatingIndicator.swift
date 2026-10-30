@@ -271,9 +271,10 @@ private struct LiquidGlassPill: View {
         }
     }
 
-    /// Clear glass needs a light dimming layer so the white words stay readable over bright windows. Red on failure.
+    /// A light dimming layer, so the pill stays see-through. A soft shadow under the words and waveform keeps them
+    /// readable over white pages. Red on failure.
     private var tint: Color {
-        model.phase == .failure ? Color.red.opacity(0.5) : Color.black.opacity(0.3)
+        model.phase == .failure ? Color.red.opacity(0.5) : Color.black.opacity(0.15)
     }
 
     var body: some View {
@@ -281,6 +282,7 @@ private struct LiquidGlassPill: View {
             if model.presented {
                 HStack(spacing: 6) {
                     PillStatus(model: model)
+                        .shadow(color: .black.opacity(0.45), radius: 3, y: 0.5)
                         .frame(width: 36, height: 36)
                         .overlay { GlassRim(shape: Circle()) }
                         .glassEffect(.clear.tint(tint), in: Circle())
@@ -291,6 +293,7 @@ private struct LiquidGlassPill: View {
                             .font(.system(size: 13))
                             .lineLimit(1)
                             .truncationMode(model.phase == .failure ? .tail : .head)
+                            .shadow(color: .black.opacity(0.45), radius: 3, y: 0.5)
                             .padding(.horizontal, 14)
                             .frame(height: 36)
                             .frame(maxWidth: 300, alignment: .leading)
