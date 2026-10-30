@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         // The Debug page kept its own copy of the API key here. The page is gone, so the copy goes too.
         UserDefaults.standard.removeObject(forKey: "inworldSTT.apiKey")
+        // Ding, Boop, Pop, Chime and Tap are retired. A saved one would leave the Start sound picker blank.
+        StartSound.retireOldChoice()
         FrontmostAppTracker.shared.start()
         ScreenContext.startWarming()
         dictationController.startMonitoringShortcut()

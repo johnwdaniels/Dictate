@@ -27,4 +27,21 @@ final class StartSoundTests: XCTestCase {
         defaults.set("off", forKey: StartSound.storageKey)
         XCTAssertEqual(StartSound.current, .off)
     }
+
+    func testARetiredChoiceIsRewrittenAndCurrentOnesAreKept() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "StartSoundTests"))
+        defer { defaults.removePersistentDomain(forName: "StartSoundTests") }
+
+        defaults.set("ding", forKey: StartSound.storageKey)
+        StartSound.retireOldChoice(in: defaults)
+        XCTAssertEqual(defaults.string(forKey: StartSound.storageKey), StartSound.softLift.rawValue)
+
+        defaults.set("off", forKey: StartSound.storageKey)
+        StartSound.retireOldChoice(in: defaults)
+        XCTAssertEqual(defaults.string(forKey: StartSound.storageKey), "off")
+
+        defaults.removeObject(forKey: StartSound.storageKey)
+        StartSound.retireOldChoice(in: defaults)
+        XCTAssertNil(defaults.string(forKey: StartSound.storageKey))
+    }
 }
