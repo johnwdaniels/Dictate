@@ -22,7 +22,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		D1C7A7E00000000000000007 /* Dictate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Dictate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1C7A7E00000000000000007 /* Dictator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Dictator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D1C7A7E00000000000000032 /* DictateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DictateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -102,7 +102,7 @@
 		D1C7A7E00000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D1C7A7E00000000000000007 /* Dictate.app */,
+				D1C7A7E00000000000000007 /* Dictator.app */,
 				D1C7A7E00000000000000032 /* DictateTests.xctest */,
 			);
 			name = Products;
@@ -133,7 +133,7 @@
 				D1C7A7E0000000000000005C /* Sparkle */,
 			);
 			productName = Dictate;
-			productReference = D1C7A7E00000000000000007 /* Dictate.app */;
+			productReference = D1C7A7E00000000000000007 /* Dictator.app */;
 			productType = "com.apple.product-type.application";
 		};
 		D1C7A7E00000000000000030 /* DictateTests */ = {
@@ -303,7 +303,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.Dictate;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Dictate;
+				PRODUCT_NAME = Dictator;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -332,7 +333,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.johndaniels.Dictate;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Dictate;
+				PRODUCT_NAME = Dictator;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -359,7 +361,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dictate.app/Contents/MacOS/Dictate";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dictator.app/Contents/MacOS/Dictator";
 			};
 			name = Debug;
 		};
@@ -383,7 +385,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dictate.app/Contents/MacOS/Dictate";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dictator.app/Contents/MacOS/Dictator";
 			};
 			name = Release;
 		};

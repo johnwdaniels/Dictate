@@ -32,9 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let icon = NSImage(named: "AppIcon") {
-            NSApp.applicationIconImage = icon
-        }
+        AppIconChoice.applyCurrent()
         NSApp.setActivationPolicy(.accessory)
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         // The Debug page kept its own copy of the API key here. The page is gone, so the copy goes too.

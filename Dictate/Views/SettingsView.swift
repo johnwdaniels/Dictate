@@ -51,6 +51,7 @@ struct SettingsView: View {
             aiEditingSection
             pasteSection
             permissionsSection
+            AppIconSection()
             generalSection
         }
         .glassForm()
@@ -420,7 +421,7 @@ struct SettingsView: View {
             }
         case .requiresApproval:
             launchAtLogin = true
-            loginStatus = "Approve Dictate in System Settings > General > Login Items."
+            loginStatus = "Approve Dictator in System Settings > General > Login Items."
             loginFailed = false
         case .notRegistered, .notFound:
             launchAtLogin = false
@@ -454,12 +455,12 @@ struct SettingsView: View {
         testRunning = true
         Task {
             for remaining in [3, 2, 1] {
-                testMessage = "Click the text field to paste into. Pasting “Dictate test” in \(remaining)…"
+                testMessage = "Click the text field to paste into. Pasting “Dictator test” in \(remaining)…"
                 try? await Task.sleep(for: .seconds(1))
             }
             do {
-                try await PasteService.paste("Dictate test")
-                testMessage = "Pasted “Dictate test”."
+                try await PasteService.paste("Dictator test")
+                testMessage = "Pasted “Dictator test”."
             } catch {
                 testMessage = error.localizedDescription
             }

@@ -47,7 +47,7 @@ struct ShortcutsView: View {
         } header: {
             Text("New shortcut")
         } footer: {
-            Text("Say a short phrase while dictating, and Dictate replaces it with the longer text.")
+            Text("Say a short phrase while dictating, and Dictator replaces it with the longer text.")
                 .foregroundStyle(.secondary)
         }
     }

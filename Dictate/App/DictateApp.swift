@@ -7,7 +7,7 @@ struct DictateApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button("Open Dictate") {
+            Button("Open Dictator") {
                 appDelegate.openMainWindow()
             }
             Button("Paste Last Dictation") {
@@ -30,7 +30,7 @@ struct DictateApp: App {
         .menuBarExtraStyle(.menu)
 
         // SwiftUI owns this window, so the sidebar, toolbar, and title bar get the system layout and Liquid Glass.
-        Window("Dictate", id: AppDelegate.mainWindowID) {
+        Window("Dictator", id: AppDelegate.mainWindowID) {
             MainView()
                 .modelContainer(appDelegate.modelContainer)
                 .onDisappear(perform: appDelegate.mainWindowClosed)
@@ -47,7 +47,7 @@ private struct MenuBarIcon: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Label("Dictate", systemImage: "mic")
+        Label("Dictator", systemImage: "mic")
             .onAppear {
                 appDelegate.register(openWindow: openWindow)
             }

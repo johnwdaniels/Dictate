@@ -99,7 +99,7 @@ struct MainView: View {
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
                 .background(DictateChrome.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            Text("Dictate")
+            Text("Dictator")
                 .font(.headline)
             Spacer(minLength: 0)
         }

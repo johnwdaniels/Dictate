@@ -714,7 +714,7 @@ final class DictationNoticePresenter: NSObject, UNUserNotificationCenterDelegate
 
     func post(_ body: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Dictate"
+        content.title = "Dictator"
         content.body = body
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         let center = UNUserNotificationCenter.current()

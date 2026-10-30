@@ -14,6 +14,7 @@ enum InworldAPIKeyStore {
     /// Tests point this at a temporary folder.
     nonisolated(unsafe) static var directory: URL = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // Still "Dictate" after the rename to Dictator, so a saved key keeps working.
         .appendingPathComponent("Dictate", isDirectory: true)
     /// Tests turn this off so they never touch the real Keychain.
     nonisolated(unsafe) static var migratesFromKeychain = true
