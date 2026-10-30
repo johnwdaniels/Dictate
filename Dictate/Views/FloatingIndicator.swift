@@ -271,8 +271,9 @@ private struct LiquidGlassPill: View {
         }
     }
 
-    private var tint: Color? {
-        model.phase == .failure ? Color.red.opacity(0.5) : nil
+    /// Clear glass needs a light dimming layer so the white words stay readable over bright windows. Red on failure.
+    private var tint: Color {
+        model.phase == .failure ? Color.red.opacity(0.5) : Color.black.opacity(0.3)
     }
 
     var body: some View {
@@ -281,6 +282,7 @@ private struct LiquidGlassPill: View {
                 HStack(spacing: 6) {
                     PillStatus(model: model)
                         .frame(width: 36, height: 36)
+                        .overlay { GlassRim(shape: Circle()) }
                         .glassEffect(.clear.tint(tint), in: Circle())
                         .glassEffectID("status", in: glass)
                         .glassEffectTransition(.materialize)
@@ -293,6 +295,7 @@ private struct LiquidGlassPill: View {
                             .frame(height: 36)
                             .frame(maxWidth: 300, alignment: .leading)
                             .fixedSize(horizontal: true, vertical: false)
+                            .overlay { GlassRim(shape: Capsule()) }
                             .glassEffect(.clear.tint(tint), in: Capsule())
                             .glassEffectID("words", in: glass)
                             .glassEffectTransition(.matchedGeometry)
@@ -304,6 +307,41 @@ private struct LiquidGlassPill: View {
         .animation(.smooth(duration: 0.3), value: words == nil)
         .animation(.smooth(duration: 0.25), value: model.phase)
         .animation(.easeOut(duration: 0.12), value: model.levels)
+        // Dark glass, like the player bar in Music, in light mode too.
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+/// The edge of a piece of glass catching the light: bright at the top left and bottom right, faint along the sides,
+/// with a soft glow just inside. The system glass can only blur other apps' windows, not bend or reflect them, so the
+/// pill draws its own highlights.
+@available(macOS 26, *)
+private struct GlassRim<S: InsettableShape>: View {
+    let shape: S
+
+    var body: some View {
+        ZStack {
+            shape.strokeBorder(
+                AngularGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.75), location: 0),
+                        .init(color: .white.opacity(0.08), location: 0.16),
+                        .init(color: .white.opacity(0.05), location: 0.34),
+                        .init(color: .white.opacity(0.5), location: 0.5),
+                        .init(color: .white.opacity(0.08), location: 0.66),
+                        .init(color: .white.opacity(0.05), location: 0.84),
+                        .init(color: .white.opacity(0.75), location: 1),
+                    ],
+                    center: .center,
+                    angle: .degrees(225)
+                ),
+                lineWidth: 1
+            )
+            shape.inset(by: 1.5)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                .blur(radius: 1.5)
+        }
+        .blendMode(.plusLighter)
     }
 }
 
