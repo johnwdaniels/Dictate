@@ -25,6 +25,13 @@ final class ScreenContextTests: XCTestCase {
         )
     }
 
+    func testCurlyApostrophesBecomeStraight() {
+        let strings = ["I haven’t met Siobhan O’Brien or Kylan’s team", "D’Angelo’s ‘Voodoo’"]
+        let terms = ScreenContext.terms(in: strings, isKnownWord: isKnown)
+        XCTAssertEqual(terms, ["Siobhan", "O'Brien", "Kylan", "D'Angelo", "Voodoo"])
+        XCTAssertTrue(terms.allSatisfy(DictionaryTermRules.isAllowed))
+    }
+
     func testCorrectsANearMissToTheScreenSpelling() {
         let terms = ["Kylan", "Ostrowski"]
         XCTAssertEqual(

@@ -87,6 +87,11 @@ enum DictionaryTermRules {
         lhs.caseInsensitiveCompare(rhs) == .orderedSame
     }
 
+    /// Whether Inworld accepts every character of the term as a prompt.
+    static func isAllowed(_ term: String) -> Bool {
+        firstDisallowed(in: term) == nil
+    }
+
     private static func firstDisallowed(in term: String) -> Character? {
         term.first { !isAllowed($0) }
     }

@@ -150,14 +150,17 @@ enum ScreenContext {
 
     private static let edgePunctuation = CharacterSet(charactersIn: ".,;:!?()[]{}<>\"'“”‘’*…")
 
-    /// The word without surrounding punctuation or a possessive "'s".
+    /// The word without surrounding punctuation or a possessive "'s". A curly apostrophe becomes a straight one,
+    /// because Inworld rejects curly quotes and the word list spells contractions with "'".
     private static func cleaned(_ piece: Substring) -> String? {
         var word = piece.trimmingCharacters(in: edgePunctuation)
-        for suffix in ["'s", "’s"] where word.hasSuffix(suffix) {
-            word.removeLast(suffix.count)
+            .replacingOccurrences(of: "’", with: "'")
+            .replacingOccurrences(of: "‘", with: "'")
+        if word.hasSuffix("'s") {
+            word.removeLast(2)
         }
         guard (2...30).contains(word.count),
-              word.allSatisfy({ $0.isLetter || $0.isNumber || "-.'’".contains($0) }) else { return nil }
+              word.allSatisfy({ $0.isLetter || $0.isNumber || "-.'".contains($0) }) else { return nil }
         return word
     }
 
