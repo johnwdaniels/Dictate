@@ -23,6 +23,9 @@ actor InworldSTTClient {
     }
 
     private(set) var finishedByTimeout = false
+    /// When `closeStream` went out and when the last final came back, for the timing log.
+    private var closeSentAt: CFAbsoluteTime?
+    private var lastFinalAt: CFAbsoluteTime?
     /// Whether Inworld sent anything at all on the current socket. Silence from the server is a network problem.
     private(set) var heardFromServer = false
 
@@ -238,6 +241,8 @@ actor InworldSTTClient {
     func stop() async {
         guard phase == .streaming, let socket else { return }
         phase = .closing
+        closeSentAt = CFAbsoluteTimeGetCurrent()
+        lastFinalAt = nil
         do {
             try await socket.send(.string(InworldSTTMessages.closeStream))
         } catch {
@@ -269,7 +274,7 @@ actor InworldSTTClient {
                         teardownSocket()
                     }
                 } else if phase == .closing {
-                    complete(timedOut: false, sessionID: sessionID)
+                    complete(timedOut: false, by: "socket end", sessionID: sessionID)
                 } else if phase == .streaming {
                     fail(InworldSTTError.connectionLost(error.localizedDescription), sessionID: sessionID)
                 }
@@ -303,12 +308,13 @@ actor InworldSTTClient {
             #endif
             DictateLog.connection.info("Final: \(transcript.count) characters, \(kept.count) kept")
             committed = InworldSTTMessages.appending(committed, kept)
+            if phase == .closing { lastFinalAt = CFAbsoluteTimeGetCurrent() }
             onFinal(kept)
             scheduleSettleIfClosing(sessionID: sessionID)
         case .diagnostic(let name):
             logDiagnostic(name, raw: text)
             if name == "usage" {
-                completeIfClosing(sessionID: sessionID)
+                completeIfClosing(by: "usage", sessionID: sessionID)
             }
         case .serverError(let message):
             DictateLog.connection.error("Server error: \(DictationFailure.serverMessage(message), privacy: .public)")
@@ -359,21 +365,21 @@ actor InworldSTTClient {
         settleTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
-            await self?.completeIfClosing(sessionID: sessionID)
+            await self?.completeIfClosing(by: "settle", sessionID: sessionID)
         }
     }
 
-    private func completeIfClosing(sessionID: UUID) {
+    private func completeIfClosing(by reason: String, sessionID: UUID) {
         guard sessionID == self.sessionID, phase == .closing else { return }
-        complete(timedOut: false, sessionID: sessionID)
+        complete(timedOut: false, by: reason, sessionID: sessionID)
     }
 
     private func finishIfStillClosing(sessionID: UUID) {
         guard sessionID == self.sessionID, phase == .closing else { return }
-        complete(timedOut: true, sessionID: sessionID)
+        complete(timedOut: true, by: "timeout", sessionID: sessionID)
     }
 
-    private func complete(timedOut: Bool, sessionID: UUID) {
+    private func complete(timedOut: Bool, by reason: String, sessionID: UUID) {
         guard sessionID == self.sessionID, phase != .finished else { return }
         phase = .finished
         finishedByTimeout = timedOut
@@ -381,6 +387,14 @@ actor InworldSTTClient {
         DictateLog.connection.info(
             "Session end: \(text.count) characters, heard from server \(self.heardFromServer), timed out \(timedOut)"
         )
+        if let closeSentAt {
+            let now = CFAbsoluteTimeGetCurrent()
+            let final = lastFinalAt.map { "\(Int(($0 - closeSentAt) * 1000)) ms" } ?? "none"
+            DictateLog.connection.notice(
+                "Closed by \(reason, privacy: .public) \(Int((now - closeSentAt) * 1000)) ms after closeStream, last final \(final, privacy: .public)"
+            )
+        }
+        closeSentAt = nil
         teardownSocket()
         onComplete(text)
     }

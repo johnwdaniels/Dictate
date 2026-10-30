@@ -50,11 +50,18 @@ enum SmartSpacing {
         return text.replacingCharacters(in: start...start, with: text[start].lowercased())
     }
 
-    /// The text to paste into the focused field of `bundleID`. `names` keep their capital mid-sentence.
+    /// The text to paste into the focused field of `bundleID`. `names` keep their capital mid-sentence. `read` is the
+    /// text before the cursor if it was already read; otherwise it's read now.
     @MainActor
-    static func prepare(_ text: String, bundleID: String, names: Set<String> = [], now: Date = Date()) -> String {
+    static func prepare(
+        _ text: String,
+        bundleID: String,
+        names: Set<String> = [],
+        read: Before? = nil,
+        now: Date = Date()
+    ) -> String {
         let before: String?
-        switch textBeforeCursor() {
+        switch read ?? textBeforeCursor() {
         case .known(let text):
             before = text
         case .unknown:
@@ -76,14 +83,14 @@ enum SmartSpacing {
         return result
     }
 
-    private enum Before {
+    enum Before {
         /// An empty string means the cursor is at the start of the field.
         case known(String)
         case unknown
     }
 
     @MainActor
-    private static func textBeforeCursor() -> Before {
+    static func textBeforeCursor() -> Before {
         let system = AXUIElementCreateSystemWide()
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,

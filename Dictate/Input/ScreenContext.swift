@@ -346,9 +346,10 @@ enum ScreenContext {
         var result = joiningSplitTerms(text, terms: terms)
         result = correctingPhrases(result, phrases: phrases, terms: Set(terms))
         var replacements: [(Range<String.Index>, String)] = []
+        // The spell checker is the slow part, so it only rules on words that are near a term.
         for (range, word) in words(in: result)
-        where word.count >= 3 && word.first?.isUppercase == true && !terms.contains(word) && !isKnownWord(word.lowercased()) {
-            if let match = closestTerm(to: word, in: terms) {
+        where word.count >= 3 && word.first?.isUppercase == true && !terms.contains(word) {
+            if let match = closestTerm(to: word, in: terms), !isKnownWord(word.lowercased()) {
                 replacements.append((range, match))
             }
         }
