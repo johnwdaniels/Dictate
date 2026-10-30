@@ -9,7 +9,7 @@ struct SettingsView: View {
     @AppStorage(DictationLanguage.storageKey) private var languageCode = DictationLanguage.defaultCode
     @AppStorage(FloatingIndicator.visibilityKey) private var hideIndicator = false
     @AppStorage(FloatingIndicator.liveTextKey) private var showLiveText = true
-    @AppStorage(StartSound.storageKey) private var startSound = StartSound.ding.rawValue
+    @AppStorage(StartSound.storageKey) private var startSound = StartSound.fallback.rawValue
     @AppStorage(PastePreferences.clickAtMouseKey) private var clickAtMouse = false
     @AppStorage(PastePreferences.trailingSpaceKey) private var trailingSpace = true
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
