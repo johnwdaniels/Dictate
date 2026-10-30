@@ -80,6 +80,12 @@ enum StartSound: String, CaseIterable, Identifiable {
         let raw = UserDefaults.standard.string(forKey: storageKey) ?? fallback.rawValue
         return StartSound(rawValue: raw) ?? fallback
     }
+
+    /// Rewrites a saved sound that no longer exists, so the Settings picker shows the sound that actually plays.
+    static func retireOldChoice(in defaults: UserDefaults = .standard) {
+        guard let raw = defaults.string(forKey: storageKey), StartSound(rawValue: raw) == nil else { return }
+        defaults.set(fallback.rawValue, forKey: storageKey)
+    }
 }
 
 enum StartChime {
