@@ -104,6 +104,7 @@ final class DictationController: ObservableObject {
     private var askingForMicrophone = false
     /// Names read from the window this session dictates into.
     private var screenWords = ScreenContext.Words()
+    private var preparedPaste: (generation: UUID, prepared: PasteService.Prepared)?
 
     func startMonitoringShortcut() {
         recorder.onLevel = { [weak self] level in
@@ -276,6 +277,7 @@ final class DictationController: ObservableObject {
         let gate = gate
         // Reading the screen starts with the key press, alongside the mic and the connection.
         screenWords = ScreenContext.Words()
+        preparedPaste = nil
         let screenRead = ScreenContext.isEnabled
             ? ScreenContext.readScreen(target: FrontmostAppTracker.shared.targetProcessID())
             : nil
@@ -487,6 +489,8 @@ final class DictationController: ObservableObject {
         }
         await recorder.stopAndWait()
         if startedSocket {
+            // Read what the paste needs while Inworld finishes, so the paste only writes.
+            Task { @MainActor in self.preparePaste(generation: generation) }
             await client.stop()
             outcome.setTimedOut(await client.finishedByTimeout)
             outcome.setHeardFromServer(await client.heardFromServer)
@@ -536,9 +540,16 @@ final class DictationController: ObservableObject {
         }
     }
 
+    private func preparePaste(generation: UUID) {
+        guard self.generation == generation, phase == .processing else { return }
+        preparedPaste = (generation, PasteService.prepare())
+    }
+
     private func deliver(_ outcome: TranscriptOutcome.Snapshot, generation: UUID) async {
         guard self.generation == generation else { return }
         interimText = ""
+        let prepared = preparedPaste?.generation == generation ? preparedPaste?.prepared : nil
+        preparedPaste = nil
 
         if let error = outcome.error {
             phase = .idle
@@ -577,9 +588,13 @@ final class DictationController: ObservableObject {
         indicator?.dictationDidSucceed()
         let insertion = PastePreferences.insertionText(from: transcript)
         let names = Set(screenWords.terms + (dictionary?.promptTerms() ?? []))
+        let stoppedAt = recordingStoppedAt
         Task { @MainActor in
+            if let stoppedAt {
+                DictateLog.connection.notice("Pasting \(Int(Date().timeIntervalSince(stoppedAt) * 1000)) ms after the key was released")
+            }
             do {
-                try await PasteService.paste(insertion, names: names)
+                try await PasteService.paste(insertion, names: names, prepared: prepared)
             } catch {
                 let message = DictationFailure.message(for: error)
                 self.notices.post(message)
@@ -589,16 +604,20 @@ final class DictationController: ObservableObject {
         let duration = recordingDuration()
         recordingStartedAt = nil
         recordingStoppedAt = nil
-        do {
-            try history?.saveToHistory(
-                transcript,
-                durationSeconds: duration,
-                appName: target?.name ?? "",
-                bundleID: target?.bundleID ?? "",
-                screenHints: screenWords.hints
-            )
-        } catch {
-            notices.post("Couldn't save this dictation to history.")
+        let hints = screenWords.hints
+        // Saving waits until the paste is out, so the disk never holds it up.
+        Task { @MainActor in
+            do {
+                try self.history?.saveToHistory(
+                    transcript,
+                    durationSeconds: duration,
+                    appName: target?.name ?? "",
+                    bundleID: target?.bundleID ?? "",
+                    screenHints: hints
+                )
+            } catch {
+                self.notices.post("Couldn't save this dictation to history.")
+            }
         }
     }
 

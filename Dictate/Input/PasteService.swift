@@ -41,18 +41,41 @@ enum PasteServiceError: LocalizedError {
 /// Inserts text into the focused text field by pasting, then puts the clipboard back.
 @MainActor
 enum PasteService {
-    /// `names` keep their capital when the dictation lands mid-sentence.
-    static func paste(_ text: String, names: Set<String> = []) async throws {
+    /// What a paste reads before it writes: the clipboard to put back and the text before the cursor. Reading them
+    /// can take tens of milliseconds, such as a large image on the clipboard or a slow app, so a dictation reads them
+    /// while Inworld finishes, and the paste itself only writes.
+    struct Prepared {
+        fileprivate let snapshot: PasteboardSnapshot
+        fileprivate let changeCount: Int
+        fileprivate let bundleID: String
+        fileprivate let before: SmartSpacing.Before?
+    }
+
+    static func prepare() -> Prepared {
+        Prepared(
+            snapshot: .capture(),
+            changeCount: NSPasteboard.general.changeCount,
+            bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "",
+            // A click moves the cursor, so the text before it can only be read after the click.
+            before: PastePreferences.clickAtMousePosition ? nil : SmartSpacing.textBeforeCursor()
+        )
+    }
+
+    /// `names` keep their capital when the dictation lands mid-sentence. `prepared` is used only where it's still
+    /// current: the clipboard unchanged since, and the same app in front.
+    static func paste(_ text: String, names: Set<String> = [], prepared: Prepared? = nil) async throws {
         try ensureTrusted()
 
-        let snapshot = PasteboardSnapshot.capture()
+        let current = prepared.flatMap { $0.changeCount == NSPasteboard.general.changeCount ? $0 : nil }
+        let snapshot = current?.snapshot ?? PasteboardSnapshot.capture()
         do {
             if PastePreferences.clickAtMousePosition {
                 try postClick(at: screenPoint(fromCocoa: NSEvent.mouseLocation))
                 try await Task.sleep(for: .milliseconds(100))
             }
             let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-            try writeToPasteboard(SmartSpacing.prepare(text, bundleID: bundleID, names: names))
+            let before = prepared.flatMap { $0.bundleID == bundleID ? $0.before : nil }
+            try writeToPasteboard(SmartSpacing.prepare(text, bundleID: bundleID, names: names, read: before))
             try postCommandV()
             try await Task.sleep(for: .milliseconds(150))
             snapshot.restore()
