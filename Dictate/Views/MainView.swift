@@ -87,25 +87,9 @@ struct MainView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            brand
+            SidebarBrand()
         }
         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
-    }
-
-    private var brand: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
-                .background(DictateChrome.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            Text("Dictator")
-                .font(.headline)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -127,16 +111,24 @@ struct MainView: View {
     }
 }
 
-/// The brand gradient now appears only on the app mark.
-private enum DictateChrome {
-    static let orange = Color(red: 0.96, green: 0.46, blue: 0.18)
-    static let amber = Color(red: 0.98, green: 0.66, blue: 0.28)
-    static let blue = Color(red: 0.29, green: 0.56, blue: 0.95)
-    static let deepBlue = Color(red: 0.20, green: 0.40, blue: 0.90)
+/// The app's name at the top of the sidebar, with the icon picked in Settings.
+struct SidebarBrand: View {
+    @AppStorage(AppIconChoice.storageKey) private var appIcon = AppIconChoice.fallback.rawValue
 
-    static let gradient = LinearGradient(
-        colors: [orange, amber, blue, deepBlue],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    var body: some View {
+        HStack(spacing: 8) {
+            // The icon art has a transparent margin, so it is drawn larger and pulled in to sit like a 24-point badge.
+            Image((AppIconChoice(rawValue: appIcon) ?? AppIconChoice.fallback).imageName)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 30, height: 30)
+                .padding(-3)
+            Text("Dictator")
+                .font(.headline)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+    }
 }
