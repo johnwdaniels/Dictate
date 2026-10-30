@@ -54,7 +54,8 @@ protocol DictationHistorySaving: AnyObject {
         _ text: String,
         durationSeconds: Double,
         appName: String,
-        bundleID: String
+        bundleID: String,
+        screenHints: [String]
     ) throws
     func latestDictationText() -> String?
 }
@@ -102,7 +103,7 @@ final class DictationController: ObservableObject {
     private let notices = DictationNoticePresenter()
     private var askingForMicrophone = false
     /// Names read from the window this session dictates into.
-    private var screenTerms: [String] = []
+    private var screenWords = ScreenContext.Words()
 
     func startMonitoringShortcut() {
         recorder.onLevel = { [weak self] level in
@@ -274,7 +275,7 @@ final class DictationController: ObservableObject {
         let client = client
         let gate = gate
         // Reading the screen starts with the key press, alongside the mic and the connection.
-        screenTerms = []
+        screenWords = ScreenContext.Words()
         let screenRead = ScreenContext.isEnabled
             ? ScreenContext.readScreen(target: FrontmostAppTracker.shared.targetProcessID())
             : nil
@@ -419,17 +420,13 @@ final class DictationController: ObservableObject {
         do {
             let screenPrompts: (@Sendable () async -> [String])? = screenRead.map { read in
                 { [weak self] in
-                    let strings = await ScreenContext.strings(from: read)
-                    // Sorting the words happens here, off the main thread. Only what the word list doesn't know
-                    // reaches the spell checker on the main thread.
-                    let candidates = ScreenContext.candidates(in: strings)
-                    return await MainActor.run {
-                        let terms = ScreenContext.terms(from: candidates)
+                    let words = await ScreenContext.words(from: read)
+                    await MainActor.run {
                         if self?.generation == generation {
-                            self?.screenTerms = terms
+                            self?.screenWords = words
                         }
-                        return terms
                     }
+                    return words.hints
                 }
             }
             try await client.start(
@@ -569,7 +566,9 @@ final class DictationController: ObservableObject {
             return
         }
         // Names first, so the repair sees the screen's spellings.
-        let spelled = ScreenContext.correctingNames(replaced, using: screenTerms)
+        let spelled = ScreenContext.correctingNames(
+            replaced, using: screenWords.terms, phrases: screenWords.phrases
+        )
         let repaired = await SpokenRepair.apply(spelled)
         guard self.generation == generation else { return }
         phase = .idle
@@ -577,7 +576,7 @@ final class DictationController: ObservableObject {
         let transcript = AppStyle.styled(repaired, bundleID: target?.bundleID ?? "")
         indicator?.dictationDidSucceed()
         let insertion = PastePreferences.insertionText(from: transcript)
-        let names = Set(screenTerms + (dictionary?.promptTerms() ?? []))
+        let names = Set(screenWords.terms + (dictionary?.promptTerms() ?? []))
         Task { @MainActor in
             do {
                 try await PasteService.paste(insertion, names: names)
@@ -595,7 +594,8 @@ final class DictationController: ObservableObject {
                 transcript,
                 durationSeconds: duration,
                 appName: target?.name ?? "",
-                bundleID: target?.bundleID ?? ""
+                bundleID: target?.bundleID ?? "",
+                screenHints: screenWords.hints
             )
         } catch {
             notices.post("Couldn't save this dictation to history.")
