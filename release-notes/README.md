@@ -1,6 +1,6 @@
 # Release notes
 
-Each release reads its notes from `<tag>.md` in this folder, such as `v1.5.5.md`. Commit the file before pushing the tag.
+Each release reads its notes from `<tag>.md` in this folder, such as `v1.5.5.md`. Commit the file before pushing the tag. The same files ship inside the app and show on its Release Notes page, newest first. Paragraphs, `- ` bullets, **bold** and *italics* show there; headings and links do not.
 
 ## The voice
 

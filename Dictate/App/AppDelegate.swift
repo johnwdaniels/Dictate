@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.accessory)
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        // The Debug page kept its own copy of the API key here. The page is gone, so the copy goes too.
+        UserDefaults.standard.removeObject(forKey: "inworldSTT.apiKey")
         FrontmostAppTracker.shared.start()
         ScreenContext.startWarming()
         dictationController.startMonitoringShortcut()

@@ -281,7 +281,7 @@ private struct LiquidGlassPill: View {
                 HStack(spacing: 6) {
                     PillStatus(model: model)
                         .frame(width: 36, height: 36)
-                        .glassEffect(.regular.tint(tint), in: Circle())
+                        .glassEffect(.clear.tint(tint), in: Circle())
                         .glassEffectID("status", in: glass)
                         .glassEffectTransition(.materialize)
                     if let words {
@@ -293,7 +293,7 @@ private struct LiquidGlassPill: View {
                             .frame(height: 36)
                             .frame(maxWidth: 300, alignment: .leading)
                             .fixedSize(horizontal: true, vertical: false)
-                            .glassEffect(.regular.tint(tint), in: Capsule())
+                            .glassEffect(.clear.tint(tint), in: Capsule())
                             .glassEffectID("words", in: glass)
                             .glassEffectTransition(.matchedGeometry)
                     }

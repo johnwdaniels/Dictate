@@ -36,6 +36,13 @@
 			);
 			target = D1C7A7E00000000000000006 /* Dictate */;
 		};
+		D1C7A7E00000000000000071 /* Exceptions for "release-notes" folder in "Dictate" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				README.md,
+			);
+			target = D1C7A7E00000000000000006 /* Dictate */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -50,6 +57,14 @@
 		D1C7A7E00000000000000031 /* DictateTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = DictateTests;
+			sourceTree = "<group>";
+		};
+		D1C7A7E00000000000000070 /* release-notes */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D1C7A7E00000000000000071 /* Exceptions for "release-notes" folder in "Dictate" target */,
+			);
+			path = "release-notes";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -79,6 +94,7 @@
 			children = (
 				D1C7A7E00000000000000004 /* Dictate */,
 				D1C7A7E00000000000000031 /* DictateTests */,
+				D1C7A7E00000000000000070 /* release-notes */,
 				D1C7A7E00000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,6 +125,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				D1C7A7E00000000000000004 /* Dictate */,
+				D1C7A7E00000000000000070 /* release-notes */,
 			);
 			name = Dictate;
 			packageProductDependencies = (

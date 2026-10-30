@@ -7,7 +7,7 @@ struct MainView: View {
         case shortcuts = "Shortcuts"
         case insights = "Insights"
         case settings = "Settings"
-        case debug = "Debug"
+        case releaseNotes = "Release Notes"
 
         var id: String { rawValue }
 
@@ -18,7 +18,7 @@ struct MainView: View {
             case .shortcuts: "bolt"
             case .insights: "chart.bar"
             case .settings: "gearshape"
-            case .debug: "waveform"
+            case .releaseNotes: "sparkles"
             }
         }
 
@@ -29,12 +29,12 @@ struct MainView: View {
             case .shortcuts: "Phrases that expand as you speak"
             case .insights: "Time saved and words dictated"
             case .settings: "Shortcut, key, and permissions"
-            case .debug: "Live transcription"
+            case .releaseNotes: "What changed in each version"
             }
         }
 
         static let library: [Page] = [.history, .dictionary, .shortcuts, .insights]
-        static let app: [Page] = [.settings, .debug]
+        static let app: [Page] = [.settings, .releaseNotes]
     }
 
     @State private var selection: Page? = .history
@@ -52,6 +52,7 @@ struct MainView: View {
                 .navigationTitle(page.rawValue)
                 .navigationSubtitle(page.blurb)
         }
+        .glassWindow()
         .frame(
             minWidth: 880,
             idealWidth: 1000,
@@ -120,8 +121,8 @@ struct MainView: View {
             InsightsView()
         case .settings:
             SettingsView()
-        case .debug:
-            TranscriptionDebugView()
+        case .releaseNotes:
+            ReleaseNotesView()
         }
     }
 }

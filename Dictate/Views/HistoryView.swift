@@ -127,6 +127,9 @@ private struct HistoryList: View {
     @ViewBuilder
     private func row(_ entry: DictationEntry) -> some View {
         let expanded = expandedID == entry.id
+        HStack(alignment: .top, spacing: 12) {
+            HistoryAppIcon(bundleID: entry.destinationBundleID)
+                .help(entry.destinationAppName)
         VStack(alignment: .leading, spacing: 6) {
             Text(entry.text)
                 .lineLimit(expanded ? nil : 2)
@@ -134,19 +137,33 @@ private struct HistoryList: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
+                if !entry.destinationAppName.isEmpty {
+                    Text(entry.destinationAppName)
+                        .fontWeight(.medium)
+                }
                 Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
                 Text(wordLabel(entry.wordCount))
                 Spacer(minLength: 8)
-                Button(copiedID == entry.id ? "Copied" : "Copy") {
+                Button {
                     selection = entry.id
                     copy(entry)
+                } label: {
+                    Label(
+                        copiedID == entry.id ? "Copied" : "Copy",
+                        systemImage: copiedID == entry.id ? "checkmark" : "doc.on.doc"
+                    )
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
                 }
-                .buttonStyle(.borderless)
+                .glassButton()
             }
             .font(.callout)
             .foregroundStyle(.secondary)
         }
+        }
         .padding(.vertical, 4)
+        // Run the divider under the whole row, not from the Copy button's label.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contentShape(Rectangle())
         .onTapGesture {
             selection = entry.id
@@ -207,6 +224,42 @@ private struct HistoryList: View {
         return #Predicate<DictationEntry> { entry in
             entry.text.localizedStandardContains(search)
         }
+    }
+}
+
+/// The icon of the app a dictation went into, or a plain mic when that app isn't known or installed.
+private struct HistoryAppIcon: View {
+    let bundleID: String
+
+    var body: some View {
+        Group {
+            if let icon = AppIconCache.icon(for: bundleID) {
+                Image(nsImage: icon)
+                    .resizable()
+            } else {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(Color.gray.gradient, in: Circle())
+            }
+        }
+        .frame(width: 30, height: 30)
+    }
+}
+
+/// App icons by bundle ID, looked up once, so scrolling History doesn't ask Launch Services again for every row.
+@MainActor
+private enum AppIconCache {
+    private static var icons: [String: NSImage?] = [:]
+
+    static func icon(for bundleID: String) -> NSImage? {
+        guard !bundleID.isEmpty else { return nil }
+        if let cached = icons[bundleID] { return cached }
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        icons[bundleID] = icon
+        return icon
     }
 }
 
