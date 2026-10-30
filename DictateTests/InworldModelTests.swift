@@ -19,6 +19,16 @@ final class InworldModelTests: XCTestCase {
         XCTAssertFalse(standard.contains(InworldModelMemory.preview))
     }
 
+    func testPromptsInworldWouldRejectAreDropped() throws {
+        let message = try InworldSTTMessages.startMessage(
+            language: nil,
+            prompts: ["Kylan", "haven’t", "say \"hi\"", "O'Brien"],
+            modelId: InworldModelMemory.standard
+        )
+
+        XCTAssertTrue(message.contains("\"prompts\":[\"Kylan\",\"O'Brien\"]"), message)
+    }
+
     func testAModelRefusalIsNotTreatedAsABadKey() {
         XCTAssertTrue(DictationFailure.looksLikeUnavailableModel("Permission denied\nPERMISSION_DENIED 7"))
         XCTAssertTrue(DictationFailure.looksLikeUnavailableModel("Model inworld/inworld-stt-1-preview not found"))

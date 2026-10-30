@@ -68,10 +68,11 @@ enum InworldSTTMessages {
     }
 
     /// `prompts` is a field of `transcribeConfig`. It is left out when empty.
+    /// Inworld refuses the whole session over one bad character, so a term it would reject is dropped instead.
     static func startMessage(language: String?, prompts: [String], modelId: String) throws -> String {
         let terms = prompts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && DictionaryTermRules.isAllowed($0) }
         let payload = StartMessage(
             transcribeConfig: TranscribeConfig(
                 modelId: modelId,
