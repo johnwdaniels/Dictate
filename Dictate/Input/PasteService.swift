@@ -31,9 +31,9 @@ enum PasteServiceError: LocalizedError {
         case .accessibilityDenied:
             DictationFailure.accessibilityDenied
         case .pasteboardFailed:
-            "Dictate could not put the transcript on the clipboard."
+            "Dictator could not put the transcript on the clipboard."
         case .eventFailed:
-            "Dictate could not send the paste keystroke."
+            "Dictator could not send the paste keystroke."
         }
     }
 }

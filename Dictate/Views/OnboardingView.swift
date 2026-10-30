@@ -21,7 +21,7 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Set up Dictate")
+            Text("Set up Dictator")
                 .font(.title2)
             Text("Three things are needed before the first dictation.")
                 .foregroundStyle(.secondary)
