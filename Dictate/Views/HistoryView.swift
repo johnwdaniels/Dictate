@@ -233,8 +233,8 @@ private struct HistoryAppIcon: View {
 
     var body: some View {
         Group {
-            if !bundleID.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            if let icon = AppIconCache.icon(for: bundleID) {
+                Image(nsImage: icon)
                     .resizable()
             } else {
                 Image(systemName: "mic.fill")
@@ -245,6 +245,21 @@ private struct HistoryAppIcon: View {
             }
         }
         .frame(width: 30, height: 30)
+    }
+}
+
+/// App icons by bundle ID, looked up once, so scrolling History doesn't ask Launch Services again for every row.
+@MainActor
+private enum AppIconCache {
+    private static var icons: [String: NSImage?] = [:]
+
+    static func icon(for bundleID: String) -> NSImage? {
+        guard !bundleID.isEmpty else { return nil }
+        if let cached = icons[bundleID] { return cached }
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        icons[bundleID] = icon
+        return icon
     }
 }
 
