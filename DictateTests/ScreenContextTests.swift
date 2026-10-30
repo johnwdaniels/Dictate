@@ -77,12 +77,14 @@ final class ScreenContextTests: XCTestCase {
     }
 
     @MainActor
-    func testFirstNamesTheSpellCheckerAcceptsStillCountAsNames() {
-        for name in ["nikki", "jessica", "liam"] {
-            XCTAssertFalse(ScreenContext.isEnglishWord(name), name)
-        }
+    func testFirstNamesTheSpellCheckerAcceptsStillCountAsNames() throws {
         for word in ["email", "website", "settings", "message"] {
             XCTAssertTrue(ScreenContext.isEnglishWord(word), word)
+        }
+        // Some Macs, such as CI's, list no completions, and the check falls back to the spell checker alone.
+        try XCTSkipIf(ScreenContext.completionLanguage == nil, "No spell checker completions on this Mac")
+        for name in ["nikki", "jessica", "liam"] {
+            XCTAssertFalse(ScreenContext.isEnglishWord(name), name)
         }
         let candidates = ScreenContext.candidates(in: ["Message Nikki", "Settings"], wordList: [])
         XCTAssertEqual(ScreenContext.terms(from: candidates), ["Nikki"])

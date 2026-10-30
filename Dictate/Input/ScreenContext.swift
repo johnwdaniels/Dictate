@@ -270,18 +270,27 @@ enum ScreenContext {
     @MainActor
     static func isEnglishWord(_ word: String) -> Bool {
         if let known = knownWords[word] { return known }
-        let checker = NSSpellChecker.shared
-        var known = checker.checkSpelling(of: word, startingAt: 0).location == NSNotFound
-        if known {
-            let range = NSRange(location: 0, length: (word as NSString).length)
-            let completions = checker.completions(
-                forPartialWordRange: range, in: word, language: "en", inSpellDocumentWithTag: 0
-            ) ?? []
-            known = completions.contains(word)
+        var known = NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
+        if known, let language = completionLanguage {
+            known = completions(of: word, language: language).contains(word)
         }
         if knownWords.count > 20_000 { knownWords.removeAll() }
         knownWords[word] = known
         return known
+    }
+
+    /// The language whose completions list ordinary words, or nil when none does on this Mac. Without it every word
+    /// would look like a name, so the check falls back to the spell checker alone.
+    @MainActor static let completionLanguage: String? = ["en", "en_US", "en_GB"].first {
+        completions(of: "email", language: $0).contains("email")
+    }
+
+    @MainActor
+    private static func completions(of word: String, language: String) -> [String] {
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        return NSSpellChecker.shared.completions(
+            forPartialWordRange: range, in: word, language: language, inSpellDocumentWithTag: 0
+        ) ?? []
     }
 
     /// Runs the screen's words past the spell checker while nobody is dictating, so a dictation finds them answered.
