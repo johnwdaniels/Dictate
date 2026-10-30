@@ -2,43 +2,83 @@ import AppKit
 import Foundation
 
 /// The sound played when transcription starts. Off sends audio as soon as the session is ready.
+/// Each sound is a short WAV in Audio/StartSounds, named after its raw value.
 enum StartSound: String, CaseIterable, Identifiable {
     case off
-    case ding
-    case boop
-    case pop
-    case chime
-    case tap
+    case softLift
+    case dot
+    case doubleDot
+    case dotArpeggio
+    case bubble
+    case kalimba
+    case woodKnock
+    case bwip
+    case droidChirp
+    case retroBlip
+    case oo
+    case swell
+    case spinUp
+    case ringBlip
+    case marblePop
 
     static let storageKey = "dictation.startSound"
+    static let fallback = StartSound.softLift
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .off: "Off"
-        case .ding: "Ding"
-        case .boop: "Boop"
-        case .pop: "Pop"
-        case .chime: "Chime"
-        case .tap: "Tap"
+        case .softLift: "Cheryl Approved"
+        case .dot: "Per Slack"
+        case .doubleDot: "Circle Back"
+        case .dotArpeggio: "Danil o'Clock"
+        case .bubble: "Pricing Sheet"
+        case .kalimba: "Nine Hundred Eleven"
+        case .woodKnock: "Talk to Brian"
+        case .bwip: "Rebase First"
+        case .droidChirp: "Karim Mode"
+        case .retroBlip: "Gate 1"
+        case .oo: "Ask Sage"
+        case .swell: "Kylan Cinema"
+        case .spinUp: "John's Build"
+        case .ringBlip: "HubSpot Says"
+        case .marblePop: "Pedro PR"
         }
     }
 
+    /// Length of the bundled file. Audio is held back until the sound ends, so the mic doesn't catch it.
     var duration: TimeInterval {
         switch self {
         case .off: 0
-        case .ding: 0.26
-        case .boop: 0.20
-        case .pop: 0.08
-        case .chime: 0.32
-        case .tap: 0.10
+        case .softLift: 0.208
+        case .dot: 0.199
+        case .doubleDot: 0.284
+        case .dotArpeggio: 0.320
+        case .bubble: 0.179
+        case .kalimba: 0.250
+        case .woodKnock: 0.112
+        case .bwip: 0.299
+        case .droidChirp: 0.249
+        case .retroBlip: 0.270
+        case .oo: 0.296
+        case .swell: 0.237
+        case .spinUp: 0.199
+        case .ringBlip: 0.244
+        case .marblePop: 0.200
         }
     }
 
+    /// Bundled WAV for this sound. Nil for Off.
+    var fileURL: URL? {
+        guard self != .off else { return nil }
+        return Bundle.main.url(forResource: rawValue, withExtension: "wav")
+    }
+
+    /// Choices saved by older versions (ding, boop, pop, chime, tap) fall back to Cheryl Approved.
     static var current: StartSound {
-        let raw = UserDefaults.standard.string(forKey: storageKey) ?? StartSound.ding.rawValue
-        return StartSound(rawValue: raw) ?? .ding
+        let raw = UserDefaults.standard.string(forKey: storageKey) ?? fallback.rawValue
+        return StartSound(rawValue: raw) ?? fallback
     }
 }
 
@@ -61,110 +101,8 @@ enum StartChime {
 
     private static func cached(_ choice: StartSound) -> NSSound? {
         if let sound = cache[choice] { return sound }
-        let sound = NSSound(data: Tone.wav(for: choice))
+        guard let url = choice.fileURL, let sound = NSSound(contentsOf: url, byReference: false) else { return nil }
         cache[choice] = sound
         return sound
-    }
-}
-
-private enum Tone {
-    static let sampleRate = 44_100
-
-    static func wav(for choice: StartSound) -> Data {
-        switch choice {
-        case .off:
-            return Data()
-        case .ding:
-            return render(seconds: choice.duration, ding)
-        case .boop:
-            return render(seconds: choice.duration, boop)
-        case .pop:
-            return render(seconds: choice.duration, pop)
-        case .chime:
-            return render(seconds: choice.duration, chime)
-        case .tap:
-            return render(seconds: choice.duration, tap)
-        }
-    }
-
-    /// A small bell: one bright strike, then a very short ring.
-    private static func ding(_ time: Double) -> Double {
-        let carrier = 1_568.0
-        let strike = sin(2 * Double.pi * carrier * 2.76 * time) * exp(-28 * time)
-        var sample = sin(2 * Double.pi * carrier * time + 2.4 * strike) * exp(-14 * time)
-        sample += 0.12 * sin(2 * Double.pi * carrier * 0.5 * time) * exp(-10 * time)
-        return sample * attack(time, seconds: 0.002) * 0.22
-    }
-
-    /// A soft low bubble.
-    private static func boop(_ time: Double) -> Double {
-        let frequency = 280.0 - 50.0 * min(time, 0.2)
-        return sin(2 * Double.pi * frequency * time) * exp(-11 * time) * attack(time, seconds: 0.006) * 0.28
-    }
-
-    /// A tiny mid click.
-    private static func pop(_ time: Double) -> Double {
-        sin(2 * Double.pi * 740 * time) * exp(-48 * time) * attack(time, seconds: 0.001) * 0.2
-    }
-
-    /// Two quiet notes, a fourth apart.
-    private static func chime(_ time: Double) -> Double {
-        note(time, start: 0, frequency: 880) + note(time, start: 0.12, frequency: 1_174)
-    }
-
-    /// A short dull knock.
-    private static func tap(_ time: Double) -> Double {
-        let knock = sin(2 * Double.pi * 180 * time) * exp(-32 * time)
-        let tick = sin(2 * Double.pi * 980 * time) * exp(-70 * time)
-        return (knock * 0.7 + tick * 0.18) * attack(time, seconds: 0.001) * 0.3
-    }
-
-    private static func note(_ time: Double, start: Double, frequency: Double) -> Double {
-        let local = time - start
-        guard local >= 0 else { return 0 }
-        let strike = sin(2 * Double.pi * frequency * 2.4 * local) * exp(-30 * local)
-        return sin(2 * Double.pi * frequency * local + 1.6 * strike) * exp(-16 * local) * 0.16
-    }
-
-    private static func attack(_ time: Double, seconds: Double) -> Double {
-        min(1, time / seconds)
-    }
-
-    private static func render(seconds: TimeInterval, _ sample: (Double) -> Double) -> Data {
-        let count = Int(seconds * Double(sampleRate))
-        var samples = [Int16](repeating: 0, count: count)
-        for index in 0..<count {
-            let time = Double(index) / Double(sampleRate)
-            let clamped = max(-1, min(1, sample(time)))
-            samples[index] = Int16(clamped * 32_767)
-        }
-        return wavData(samples: samples)
-    }
-
-    private static func wavData(samples: [Int16]) -> Data {
-        let dataSize = samples.count * MemoryLayout<Int16>.size
-        var data = Data()
-        data.append(contentsOf: "RIFF".utf8)
-        data.appendLE(UInt32(36 + dataSize))
-        data.append(contentsOf: "WAVE".utf8)
-        data.append(contentsOf: "fmt ".utf8)
-        data.appendLE(UInt32(16))
-        data.appendLE(UInt16(1))
-        data.appendLE(UInt16(1))
-        data.appendLE(UInt32(sampleRate))
-        data.appendLE(UInt32(sampleRate * 2))
-        data.appendLE(UInt16(2))
-        data.appendLE(UInt16(16))
-        data.append(contentsOf: "data".utf8)
-        data.appendLE(UInt32(dataSize))
-        samples.withUnsafeBytes { data.append(contentsOf: $0) }
-        return data
-    }
-}
-
-private extension Data {
-    mutating func appendLE<T: FixedWidthInteger>(_ value: T) {
-        var little = value.littleEndian
-        Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
     }
 }
