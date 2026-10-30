@@ -22,6 +22,12 @@ final class AudioRecorder: @unchecked Sendable {
     private var cycleNotifyUnit: AudioUnit?
     /// Read and written only on the audio thread while the engine runs, and reset before it starts.
     fileprivate var cycleSeen = false
+    private var lingerClose: DispatchWorkItem?
+
+    /// How long the mic stays open after a dictation, with its audio dropped. Restarting some inputs within about a
+    /// second of stopping them (a Loopback device on an audio interface, for one) glitches the speakers, and the start
+    /// sound pops. A dictation inside this window reuses the open mic: no restart, no pop, and no start-up wait.
+    static let linger: TimeInterval = 5
 
     /// Called on the main queue, at most 30 times a second, with a level from 0 (silence) to 1.
     var onLevel: (@Sendable (Float) -> Void)?
@@ -32,7 +38,10 @@ final class AudioRecorder: @unchecked Sendable {
             throw InworldSTTError.microphoneDenied
         }
         return try await MainActor.run {
-            try self.openEngine()
+            if let stream = self.reuseOpenMic() {
+                return stream
+            }
+            return try self.openEngine()
         }
     }
 
@@ -55,22 +64,55 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    /// Stops the microphone. Safe on the main thread. From any other thread it hops to the main queue without waiting, so it cannot deadlock a thread that the main queue needs.
+    /// Ends the current stream. The mic itself stays open for `linger`, dropping its audio, then closes. Safe on the main thread. From any other thread it hops to the main queue without waiting, so it cannot deadlock a thread that the main queue needs.
     func stop() {
         if Thread.isMainThread {
-            closeEngine()
+            release()
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.closeEngine()
+                self?.release()
             }
         }
     }
 
-    /// Stops the microphone and returns after the tap is removed.
+    /// Ends the current stream and returns once no more chunks reach it.
     func stopAndWait() async {
         await MainActor.run {
-            closeEngine()
+            release()
         }
+    }
+
+    private func release() {
+        finishStream()
+        guard engine.isRunning, tapInstalled else {
+            closeEngine()
+            return
+        }
+        lingerClose?.cancel()
+        let close = DispatchWorkItem { [weak self] in
+            self?.closeEngine()
+        }
+        lingerClose = close
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.linger, execute: close)
+    }
+
+    /// A new stream on the mic that is still open from the last dictation, unless it closed or the chosen mic changed.
+    private func reuseOpenMic() -> AsyncStream<AudioChunk>? {
+        guard lingerClose != nil, engine.isRunning, tapInstalled, converter != nil,
+              InputDevices.resolvedInputID().map({ $0 == inputDeviceID }) ?? true else { return nil }
+        lingerClose?.cancel()
+        lingerClose = nil
+        finishStream()
+        DictateLog.audio.info("Microphone \(self.inputDeviceID.map(String.init) ?? "default", privacy: .public): reused, still open")
+        return AsyncStream<AudioChunk> { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    private func finishStream() {
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.finish()
     }
 
     private func openEngine() throws -> AsyncStream<AudioChunk> {
@@ -100,6 +142,8 @@ final class AudioRecorder: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
             self.setFlowing(true)
+            // Between dictations the mic only lingers. Its audio goes nowhere.
+            guard self.continuation != nil else { return }
             self.publishLevel(buffer)
             guard let data = self.convert(buffer) else { return }
             let seconds = Double(buffer.frameLength) / max(buffer.format.sampleRate, 1)
@@ -174,6 +218,8 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     private func closeEngine() {
+        lingerClose?.cancel()
+        lingerClose = nil
         if let unit = cycleNotifyUnit {
             AudioUnitRemoveRenderNotify(unit, firstCycleNotify, Unmanaged.passUnretained(self).toOpaque())
             cycleNotifyUnit = nil
@@ -188,9 +234,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
         converter = nil
         targetFormat = nil
-        let continuation = continuation
-        self.continuation = nil
-        continuation?.finish()
+        finishStream()
     }
 
     private func publishLevel(_ buffer: AVAudioPCMBuffer) {
