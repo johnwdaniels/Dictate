@@ -29,21 +29,21 @@ enum StartSound: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .off: "Off"
-        case .softLift: "Soft lift"
-        case .dot: "Dot"
-        case .doubleDot: "Double dot"
-        case .dotArpeggio: "Three dots"
-        case .bubble: "Bubble"
-        case .kalimba: "Kalimba"
-        case .woodKnock: "Wood knock"
-        case .bwip: "Bwip"
-        case .droidChirp: "Droid chirp"
-        case .retroBlip: "Retro blip"
-        case .oo: "Oo"
-        case .swell: "Swell"
-        case .spinUp: "Spin up"
-        case .ringBlip: "Ring blip"
-        case .marblePop: "Marble pop"
+        case .softLift: "Cheryl Approved"
+        case .dot: "Per Slack"
+        case .doubleDot: "Circle Back"
+        case .dotArpeggio: "Danil o'Clock"
+        case .bubble: "Pricing Sheet"
+        case .kalimba: "Nine Hundred Eleven"
+        case .woodKnock: "Talk to Brian"
+        case .bwip: "Rebase First"
+        case .droidChirp: "Karim Mode"
+        case .retroBlip: "Gate 1"
+        case .oo: "Ask Sage"
+        case .swell: "Kylan Cinema"
+        case .spinUp: "John's Build"
+        case .ringBlip: "HubSpot Says"
+        case .marblePop: "Pedro PR"
         }
     }
 
@@ -75,7 +75,7 @@ enum StartSound: String, CaseIterable, Identifiable {
         return Bundle.main.url(forResource: rawValue, withExtension: "wav")
     }
 
-    /// Choices saved by older versions (ding, boop, pop, chime, tap) fall back to Soft lift.
+    /// Choices saved by older versions (ding, boop, pop, chime, tap) fall back to Cheryl Approved.
     static var current: StartSound {
         let raw = UserDefaults.standard.string(forKey: storageKey) ?? fallback.rawValue
         return StartSound(rawValue: raw) ?? fallback
