@@ -4,6 +4,7 @@ import Foundation
 enum TranscriptCleanup {
     static let removeFillersKey = "cleanup.removeFillers"
     static let formatNumbersKey = "cleanup.formatNumbers"
+    static let joinCodesKey = "cleanup.joinCodes"
 
     /// Missing key means on, matching the Settings toggle's default.
     static var removeFillers: Bool {
@@ -17,10 +18,17 @@ enum TranscriptCleanup {
         return UserDefaults.standard.bool(forKey: formatNumbersKey)
     }
 
+    /// Missing key means on, matching the Settings toggle's default.
+    static var joinCodes: Bool {
+        guard UserDefaults.standard.object(forKey: joinCodesKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: joinCodesKey)
+    }
+
     static func clean(
         _ transcript: String,
         removeFillers: Bool = removeFillers,
         formatNumbers: Bool = formatNumbers,
+        joinCodes: Bool = joinCodes,
         language: String? = DictationLanguage.storedCode
     ) -> String {
         // Noise, not a filler someone might want to keep, so this ignores the switches.
@@ -28,6 +36,7 @@ enum TranscriptCleanup {
         text = removingStrayLetter(text, language: language)
         if removeFillers { text = removingFillers(text) }
         if formatNumbers { text = formattingNumbers(text) }
+        if joinCodes { text = joiningSpelledCodes(text) }
         return text
     }
 
@@ -112,6 +121,33 @@ enum TranscriptCleanup {
             }
         }
         return tokens.map(\.text).joined(separator: " ")
+    }
+
+    // MARK: Spelled codes
+
+    /// Single capital letters or digits separated by a hyphen or a space, as the model writes a code read out
+    /// character by character. Not touching another letter, digit or hyphenated word on either side.
+    private static let spelledRun = try! NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{N}-])[A-Z0-9](?:[- ][A-Z0-9]){2,}(?![\p{L}\p{N}]|-[\p{L}\p{N}])"#
+    )
+
+    /// Joins a code read out character by character: "P-E-C-2-6-B-A-4-9-7" becomes "PEC26BA497".
+    /// Joins 4 or more characters with a digit among them ("A B 1 2", "5 5 5 1"), and 3 or more capital letters joined
+    /// by hyphens ("U-S-A"). Letters split only by spaces stay, so "Plan A B" and a lone "I" or "a" are safe, and
+    /// written groups such as "555-123-4567", "2026-10-29" and "v1.7.3" never match.
+    static func joiningSpelledCodes(_ transcript: String) -> String {
+        let range = NSRange(transcript.startIndex..., in: transcript)
+        var result = transcript
+        for match in spelledRun.matches(in: transcript, range: range).reversed() {
+            guard let span = Range(match.range, in: result) else { continue }
+            let run = result[span]
+            let characters = run.filter { $0 != "-" && $0 != " " }
+            let hasDigit = characters.contains(where: \.isNumber)
+            let hyphensOnly = !run.contains(" ")
+            guard (characters.count >= 4 && hasDigit) || (hyphensOnly && !hasDigit) else { continue }
+            result.replaceSubrange(span, with: String(characters))
+        }
+        return result
     }
 
     // MARK: Numbers

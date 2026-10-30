@@ -4,6 +4,35 @@ import XCTest
 final class TranscriptCleanupTests: XCTestCase {
     private func fillers(_ text: String) -> String { TranscriptCleanup.removingFillers(text) }
     private func numbers(_ text: String) -> String { TranscriptCleanup.formattingNumbers(text) }
+    private func codes(_ text: String) -> String { TranscriptCleanup.joiningSpelledCodes(text) }
+
+    func testSpelledOutCodesAreJoined() {
+        XCTAssertEqual(codes("My code is P-E-C-2-6-B-A-4-9-7."), "My code is PEC26BA497.")
+        XCTAssertEqual(codes("Use A B 1 2 C D to log in"), "Use AB12CD to log in")
+        XCTAssertEqual(codes("Call 5 5 5 1 2 3 4 5 6 7 tomorrow"), "Call 5551234567 tomorrow")
+        XCTAssertEqual(codes("Made in the U-S-A, shipped to the U-K-"), "Made in the USA, shipped to the U-K-")
+        XCTAssertEqual(codes("Codes X-1-Y-2 and 9-8-7-6"), "Codes X1Y2 and 9876")
+    }
+
+    func testOrdinaryTextIsNotTreatedAsACode() {
+        let untouched = [
+            "I need a 5 minute break.",
+            "Plan A B is fine, and so is option 1 2 3.",
+            "Call 555-123-4567 on 2026-10-29 about v1.7.3.",
+            "The COVID-19 numbers and the T-shirt in size M.",
+            "Grades went A B C D over the year.",
+            "Pick between A and B, then press 1 or 2.",
+        ]
+        for text in untouched {
+            XCTAssertEqual(codes(text), text)
+        }
+    }
+
+    func testTheCodeSwitchTurnsJoiningOff() {
+        let text = "Code P-E-C-2-6"
+        XCTAssertEqual(TranscriptCleanup.clean(text, removeFillers: false, formatNumbers: false, joinCodes: true), "Code PEC26")
+        XCTAssertEqual(TranscriptCleanup.clean(text, removeFillers: false, formatNumbers: false, joinCodes: false), text)
+    }
 
     func testFillerSoundsAreRemoved() {
         XCTAssertEqual(fillers("So, um, we ship Friday."), "So, we ship Friday.")
