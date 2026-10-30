@@ -405,11 +405,11 @@ final class DictationController: ObservableObject {
         let audioTask = Task {
             let stream = try await recorder.start()
             // The mic reports open before the hardware settles, and a sound played then pops. The stream is handed
-            // over right away, so capture is unchanged. Only the sound waits for the first real audio.
+            // over right away, so capture is unchanged. Only the sound waits, until the mic's first cycle.
             Task {
                 let opened = CFAbsoluteTimeGetCurrent()
-                await recorder.waitForFirstBuffer()
-                DictateLog.audio.info("First mic audio \(Int((CFAbsoluteTimeGetCurrent() - opened) * 1000)) ms after open")
+                await recorder.waitUntilRunning()
+                DictateLog.audio.info("Mic running \(Int((CFAbsoluteTimeGetCurrent() - opened) * 1000)) ms after open")
                 await MainActor.run { self.micDidOpen(generation: generation) }
             }
             return stream

@@ -30,7 +30,7 @@ final class StartSoundTests: XCTestCase {
 
     func testWaitingForTheMicGivesUpWhenNoAudioArrives() async {
         let started = CFAbsoluteTimeGetCurrent()
-        await AudioRecorder().waitForFirstBuffer(timeout: 0.05)
+        await AudioRecorder().waitUntilRunning(timeout: 0.05)
         XCTAssertLessThan(CFAbsoluteTimeGetCurrent() - started, 0.5)
     }
 
