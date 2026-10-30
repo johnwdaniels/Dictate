@@ -6,7 +6,10 @@ import ApplicationServices
 /// Only the picked words leave the Mac, never the windows' text.
 enum ScreenContext {
     static let enabledKey = "context.useScreenNames"
-    static let maximumTerms = 60
+    /// Screen words kept for fixing the transcript afterwards. These never reach Inworld, so there can be many.
+    static let maximumTerms = 300
+    /// Screen words sent to Inworld as hints. Each one nudges what it hears, so only the window being typed in sends any.
+    static let maximumHints = 20
     /// How long a dictation waits for the windows to be read. It overlaps the connection's handshake.
     static let wait: Duration = .milliseconds(120)
 
@@ -15,7 +18,7 @@ enum ScreenContext {
     private static let maximumOtherApps = 8
     private static let maximumNodes = 2_500
     private static let maximumCharacters = 60_000
-    private static let maximumCandidates = 250
+    private static let maximumCandidates = 600
     private static let cache = LastRead()
     /// Months, weekdays, languages and countries. They are always written with a capital, so the spell checker only
     /// knows them that way, and speech-to-text spells them right without help.
@@ -116,8 +119,8 @@ enum ScreenContext {
             for piece in string.split(whereSeparator: { $0.isWhitespace || $0 == "/" }) {
                 guard let word = cleaned(piece), seen.insert(word).inserted,
                       !calendarWords.contains(word), let needsCheck = kind(of: word) else { continue }
-                if needsCheck, isListed(word.lowercased(), in: wordList) { continue }
-                candidates.append(Candidate(word: word, needsCheck: needsCheck))
+                let listed = needsCheck && isListed(word.lowercased(), in: wordList)
+                candidates.append(Candidate(word: word, needsCheck: needsCheck, listed: listed))
                 if candidates.count >= maximumCandidates { break scan }
             }
         }
@@ -136,16 +139,91 @@ enum ScreenContext {
     struct Candidate: Sendable {
         let word: String
         let needsCheck: Bool
+        /// In the macOS word list. That list is old and full of rare words such as "arx", so a listed word is only
+        /// ordinary once the spell checker knows it too.
+        var listed = false
     }
 
-    static func terms(from candidates: [Candidate], isKnownWord: (String) -> Bool) -> [String] {
+    /// `isSpelledWord` rules on words the word list already has; without it `isKnownWord` rules on every word.
+    static func terms(
+        from candidates: [Candidate],
+        limit: Int = maximumTerms,
+        isKnownWord: (String) -> Bool,
+        isSpelledWord: ((String) -> Bool)? = nil
+    ) -> [String] {
         var terms: [String] = []
         for candidate in candidates {
-            if candidate.needsCheck, isKnownWord(candidate.word.lowercased()) { continue }
+            if candidate.needsCheck {
+                let word = candidate.word.lowercased()
+                let isOrdinary = candidate.listed ? (isSpelledWord?(word) ?? isKnownWord(word)) : isKnownWord(word)
+                if isOrdinary { continue }
+            }
             terms.append(candidate.word)
-            if terms.count >= maximumTerms { break }
+            if terms.count >= limit { break }
         }
         return terms
+    }
+
+    /// Runs of two to four capitalized words around a term, such as "Arx Media" or "Pocket FM", so a company or full
+    /// name can be sent whole and recognized whole.
+    static func phrases(in strings: [String], containing terms: [String]) -> [String] {
+        let termSet = Set(terms)
+        var seen = Set<String>()
+        var phrases: [String] = []
+        for string in strings {
+            var run: [String] = []
+            func flush() {
+                if (2...4).contains(run.count), run.contains(where: termSet.contains) {
+                    let phrase = run.joined(separator: " ")
+                    if seen.insert(phrase).inserted { phrases.append(phrase) }
+                }
+                run = []
+            }
+            for piece in string.split(whereSeparator: \.isWhitespace) {
+                guard let word = cleaned(piece), let first = word.first, first.isUppercase || first.isNumber else {
+                    flush()
+                    continue
+                }
+                run.append(word)
+                // A comma or full stop ends the name: "Arx Media, Pocket FM".
+                if let last = piece.last, ",;:.!?)".contains(last) { flush() }
+            }
+            flush()
+            if phrases.count >= maximumTerms { break }
+        }
+        return phrases
+    }
+
+    /// The hints for Inworld: terms from the window being typed in, each as its whole phrase where it has one.
+    static func hints(from terms: [String], phrases: [String]) -> [String] {
+        var seen = Set<String>()
+        var hints: [String] = []
+        for term in terms {
+            let hint = phrases.first { $0.split(separator: " ").contains(Substring(term)) } ?? term
+            if seen.insert(hint).inserted { hints.append(hint) }
+            if hints.count >= maximumHints { break }
+        }
+        return hints
+    }
+
+    /// What one dictation takes from the screen.
+    struct Words: Sendable {
+        var hints: [String] = []
+        var terms: [String] = []
+        var phrases: [String] = []
+    }
+
+    /// Hints from the window being typed in, and terms and phrases from every window, for fixing the transcript.
+    static func words(from read: ScreenRead) async -> Words {
+        let strings = await strings(from: read)
+        let near = Set(candidates(in: read.target.map { cache.strings(for: $0) } ?? []).map(\.word))
+        // Sorting the words happens here, off the main thread. Only words that might be names reach the spell checker
+        // on the main thread, and the screen's words are usually already checked by the time a dictation starts.
+        let found = candidates(in: strings)
+        let terms = await MainActor.run { Self.terms(from: found) }
+        let phrases = phrases(in: strings, containing: terms)
+        let nearTerms = near.isEmpty ? terms : terms.filter(near.contains)
+        return Words(hints: hints(from: nearTerms, phrases: phrases), terms: terms, phrases: phrases)
     }
 
     private static let edgePunctuation = CharacterSet(charactersIn: ".,;:!?()[]{}<>\"'“”‘’*…")
@@ -196,33 +274,144 @@ enum ScreenContext {
 
     @MainActor
     static func terms(from candidates: [Candidate]) -> [String] {
-        terms(from: candidates, isKnownWord: isEnglishWord)
+        terms(from: candidates, isKnownWord: isEnglishWord, isSpelledWord: isSpelled)
     }
 
-    /// Swaps a transcribed name for the screen's spelling when it is a near miss, such as "Kylen" for "Kylan".
-    static func correctingNames(_ text: String, using terms: [String], isKnownWord: (String) -> Bool) -> String {
+    /// Puts the screen's spelling back into the transcript, in three passes:
+    /// a term said in pieces is joined ("Pocket FM" to "PocketFM"), a word that sounds like one in a screen phrase is
+    /// swapped when the rest of the phrase matches ("Arcs Media" to "Arx Media"), and a name that is a near miss is
+    /// swapped ("Kylen" to "Kylan"). Nothing here reaches Inworld, so it adds no bias and no wait.
+    static func correctingNames(
+        _ text: String,
+        using terms: [String],
+        phrases: [String] = [],
+        isKnownWord: (String) -> Bool
+    ) -> String {
         guard !terms.isEmpty else { return text }
-        var words: [(Range<String.Index>, String)] = []
-        text.enumerateSubstrings(in: text.startIndex..., options: .byWords) { word, range, _, _ in
-            guard let word, word.count >= 3, word.first?.isUppercase == true, !terms.contains(word) else { return }
-            words.append((range, word))
-        }
+        var result = joiningSplitTerms(text, terms: terms)
+        result = correctingPhrases(result, phrases: phrases, terms: Set(terms))
         var replacements: [(Range<String.Index>, String)] = []
-        for (range, word) in words where !isKnownWord(word.lowercased()) {
+        for (range, word) in words(in: result)
+        where word.count >= 3 && word.first?.isUppercase == true && !terms.contains(word) && !isKnownWord(word.lowercased()) {
             if let match = closestTerm(to: word, in: terms) {
                 replacements.append((range, match))
             }
         }
+        return replacing(replacements, in: result)
+    }
+
+    @MainActor
+    static func correctingNames(_ text: String, using terms: [String], phrases: [String]) -> String {
+        correctingNames(text, using: terms, phrases: phrases, isKnownWord: isEnglishWord)
+    }
+
+    private static func words(in text: String) -> [(Range<String.Index>, String)] {
+        var words: [(Range<String.Index>, String)] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .byWords) { word, range, _, _ in
+            if let word { words.append((range, word)) }
+        }
+        return words
+    }
+
+    private static func replacing(_ replacements: [(Range<String.Index>, String)], in text: String) -> String {
         var result = text
-        for (range, match) in replacements.reversed() {
-            result.replaceSubrange(range, with: match)
+        for (range, replacement) in replacements.reversed() {
+            result.replaceSubrange(range, with: replacement)
         }
         return result
     }
 
-    @MainActor
-    static func correctingNames(_ text: String, using terms: [String]) -> String {
-        correctingNames(text, using: terms, isKnownWord: isEnglishWord)
+    private static func letters(_ word: some StringProtocol) -> String {
+        word.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    /// Two or three words in a row, with only spaces or hyphens between them, that spell a term once joined.
+    private static func joiningSplitTerms(_ text: String, terms: [String]) -> String {
+        var byLetters: [String: String] = [:]
+        for term in terms where letters(term).count >= 4 && byLetters[letters(term)] == nil {
+            byLetters[letters(term)] = term
+        }
+        let words = words(in: text)
+        var replacements: [(Range<String.Index>, String)] = []
+        var index = 0
+        while index < words.count {
+            var length = 1
+            for count in [3, 2] where index + count <= words.count {
+                let span = words[index..<index + count]
+                let joinedBySpaces = zip(span, span.dropFirst()).allSatisfy { left, right in
+                    text[left.0.upperBound..<right.0.lowerBound].allSatisfy { $0 == " " || $0 == "-" }
+                }
+                guard joinedBySpaces, let term = byLetters[span.map { letters($0.1) }.joined()] else { continue }
+                replacements.append((span.first!.0.lowerBound..<span.last!.0.upperBound, term))
+                length = count
+                break
+            }
+            index += length
+        }
+        return replacing(replacements, in: text)
+    }
+
+    /// A phrase from the screen said with one word misheard, such as "Arcs Media" for "Arx Media". The other words
+    /// must match, which is what makes it safe to swap even an ordinary word such as "arcs".
+    private static func correctingPhrases(_ text: String, phrases: [String], terms: Set<String>) -> String {
+        var result = text
+        for phrase in phrases {
+            let parts = phrase.split(separator: " ").map(String.init)
+            let words = words(in: result)
+            guard parts.count >= 2, words.count >= parts.count else { continue }
+            var replacements: [(Range<String.Index>, String)] = []
+            var index = 0
+            while index + parts.count <= words.count {
+                var misheard: Int?
+                var matches = true
+                for (offset, part) in parts.enumerated() {
+                    let word = words[index + offset].1
+                    if word.lowercased() == part.lowercased() { continue }
+                    if misheard == nil, terms.contains(part), soundsAlike(word, part) {
+                        misheard = offset
+                    } else {
+                        matches = false
+                        break
+                    }
+                }
+                if matches, let misheard {
+                    replacements.append((words[index + misheard].0, parts[misheard]))
+                    index += parts.count
+                } else {
+                    index += 1
+                }
+            }
+            result = replacing(replacements, in: result)
+        }
+        return result
+    }
+
+    private static func soundsAlike(_ word: String, _ term: String) -> Bool {
+        if soundKey(word) == soundKey(term) { return true }
+        let allowed = term.count <= 4 ? 1 : 2
+        return word.first?.lowercased() == term.first?.lowercased()
+            && editDistance(word.lowercased(), term.lowercased()) <= allowed
+    }
+
+    /// A rough key for how an English word sounds: "arcs" and "arx" are both "arks", "Nicki" and "Nikki" both "nk".
+    static func soundKey(_ word: String) -> String {
+        var spelled = word.lowercased().filter(\.isLetter)
+        for (from, to) in [("ph", "f"), ("ck", "k"), ("x", "ks"), ("q", "k"), ("z", "s")] {
+            spelled = spelled.replacingOccurrences(of: from, with: to)
+        }
+        let letters = Array(spelled)
+        var key: [Character] = []
+        for (index, letter) in letters.enumerated() {
+            var sound = letter
+            if letter == "c" {
+                let next = index + 1 < letters.count ? letters[index + 1] : " "
+                sound = "eiy".contains(next) ? "s" : "k"
+            }
+            if index > 0, "aeiouyhw".contains(sound) { continue }
+            if key.last == sound { continue }
+            key.append(sound)
+        }
+        return String(key)
     }
 
     /// The one term within a small edit distance that starts with the same letter. A tie means no swap.
@@ -291,6 +480,18 @@ enum ScreenContext {
         return NSSpellChecker.shared.completions(
             forPartialWordRange: range, in: word, language: language, inSpellDocumentWithTag: 0
         ) ?? []
+    }
+
+    @MainActor private static var spelledWords: [String: Bool] = [:]
+
+    /// Whether the spell checker knows `word`, for words the word list has, where its completions aren't needed.
+    @MainActor
+    static func isSpelled(_ word: String) -> Bool {
+        if let known = spelledWords[word] { return known }
+        let known = NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
+        if spelledWords.count > 20_000 { spelledWords.removeAll() }
+        spelledWords[word] = known
+        return known
     }
 
     /// Runs the screen's words past the spell checker while nobody is dictating, so a dictation finds them answered.
@@ -403,11 +604,12 @@ enum ScreenContext {
     }
 }
 
-/// The macOS word list, lowercased, loaded once in the background. Empty if the file is missing.
+/// The ordinary words of the macOS word list, loaded once in the background. Capitalized entries are names, such as
+/// "Marvin", so they're left out. Empty if the file is missing.
 enum WordList {
     static let words: Set<String> = {
         guard let text = try? String(contentsOfFile: "/usr/share/dict/words", encoding: .utf8) else { return [] }
-        return Set(text.split(separator: "\n").map { $0.lowercased() })
+        return Set(text.split(separator: "\n").filter { $0.first?.isLowercase == true }.map(String.init))
     }()
 }
 

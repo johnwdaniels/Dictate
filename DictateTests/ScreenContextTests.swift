@@ -89,4 +89,51 @@ final class ScreenContextTests: XCTestCase {
         let candidates = ScreenContext.candidates(in: ["Message Nikki", "Settings"], wordList: [])
         XCTAssertEqual(ScreenContext.terms(from: candidates), ["Nikki"])
     }
+
+    func testRareWordListWordsTheSpellCheckerDoesntKnowStayTerms() {
+        let candidates = ScreenContext.candidates(in: ["Arx Media", "Reply"], wordList: ["arx", "media", "reply"])
+        let terms = ScreenContext.terms(
+            from: candidates, isKnownWord: { _ in true }, isSpelledWord: { $0 == "media" || $0 == "reply" }
+        )
+        XCTAssertEqual(terms, ["Arx"])
+    }
+
+    func testHintsUseTheWholeCompanyName() {
+        let strings = ["Reply to Nikki about the Arx Media deal", "PocketFM and Arx Media, Inworld"]
+        let terms = ["Nikki", "Arx", "PocketFM", "Inworld"]
+        let phrases = ScreenContext.phrases(in: strings, containing: terms)
+        XCTAssertEqual(phrases, ["Arx Media"])
+        XCTAssertEqual(ScreenContext.hints(from: terms, phrases: phrases), ["Nikki", "Arx Media", "PocketFM", "Inworld"])
+    }
+
+    func testLongTitleCaseLabelsAreNotPhrases() {
+        XCTAssertEqual(ScreenContext.phrases(in: ["Talk To Arx Media Team Right Now"], containing: ["Arx"]), [])
+    }
+
+    func testJoinsATermSaidInPieces() {
+        XCTAssertEqual(
+            ScreenContext.correctingNames(
+                "Send it to pocket FM and Eleven Labs", using: ["PocketFM", "ElevenLabs"], isKnownWord: isKnown
+            ),
+            "Send it to PocketFM and ElevenLabs"
+        )
+    }
+
+    func testFixesAMisheardWordInAScreenPhraseOnly() {
+        let fix = { (text: String) in
+            ScreenContext.correctingNames(
+                text, using: ["Arx", "Nikki"], phrases: ["Arx Media"], isKnownWord: { $0 == "arcs" || $0 == "talk" }
+            )
+        }
+        XCTAssertEqual(fix("I met Nicki at Arcs Media"), "I met Nikki at Arx Media")
+        XCTAssertEqual(fix("arcs media signed"), "Arx media signed")
+        XCTAssertEqual(fix("Talk to Arcs about it"), "Talk to Arcs about it")
+        XCTAssertEqual(fix("arcs of light"), "arcs of light")
+    }
+
+    func testSoundKey() {
+        XCTAssertEqual(ScreenContext.soundKey("arcs"), ScreenContext.soundKey("Arx"))
+        XCTAssertEqual(ScreenContext.soundKey("Nicki"), ScreenContext.soundKey("Nikki"))
+        XCTAssertNotEqual(ScreenContext.soundKey("Ask"), ScreenContext.soundKey("Arx"))
+    }
 }
