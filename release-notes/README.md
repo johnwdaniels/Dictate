@@ -11,6 +11,7 @@ The notes are a short, crude stand-up set. A comedian who has had two drinks is 
 - The joke is on the bug, the computer, Bluetooth, or us. Never on the user.
 - Self-deprecating is the sweet spot. We wrote the bug, we're idiots, we fixed it.
 - Crude is welcome: swearing, potty humor, your Mac breaking wind. No sexual jokes, no slurs, nothing mean.
+- The one exception is AI slurs. Dictate is vibe coded, so roast the AI that wrote it ("clanker") and us for letting it ("meat proxies" who just pressed Enter).
 - No real people's names or jokes about them, including whoever reported something, unless they said yes.
 - Short. A few paragraphs per change. If a bit needs explaining, cut it.
 - End with **The short version:**, a plain list of what changed, for anyone who skipped the set. Keep that list clean and literal.
