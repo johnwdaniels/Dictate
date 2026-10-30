@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage(InputDevices.storageKey) private var inputDeviceUID = ""
     @AppStorage(TranscriptCleanup.removeFillersKey) private var removeFillers = true
     @AppStorage(TranscriptCleanup.formatNumbersKey) private var formatNumbers = true
+    @AppStorage(TranscriptCleanup.joinCodesKey) private var joinCodes = true
     @AppStorage(ScreenContext.enabledKey) private var useScreenNames = true
     @AppStorage(SpokenRepair.repairKey) private var repairSpokenText = false
     @AppStorage(SpokenRepair.polishKey) private var polishSpokenText = false
@@ -167,6 +168,14 @@ struct SettingsView: View {
                     subtitle: "Writes “ninety days” as “90 days” and “fifty percent” as “50%”. One to nine stay as words.",
                     systemImage: "number",
                     color: .purple
+                )
+            }
+            Toggle(isOn: $joinCodes) {
+                SettingLabel(
+                    title: "Join spelled-out codes",
+                    subtitle: "Writes a code read letter by letter, such as “P-E-C-2-6-B-A”, as “PEC26BA”. Good for activation codes, IDs and phone numbers.",
+                    systemImage: "barcode",
+                    color: .orange
                 )
             }
             Toggle(isOn: $useScreenNames) {
