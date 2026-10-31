@@ -98,6 +98,33 @@ final class ScreenContextTests: XCTestCase {
         XCTAssertEqual(terms, ["Arx"])
     }
 
+    /// The shape of the hints Messages produced in October 2026, with made-up names. "Start FaceTime" was read back as speech.
+    func testMessagesChatFillerAndButtonLabelsAreNotHints() {
+        let strings = [
+            "Saturday 11 PM", "Marta Quell", "iMessage", "Tobias Wren", "Lol", "Hahaha", "Noo", "Lmao", "Ines Varga",
+            "Sooooooo", "Woowww", "Start FaceTime", "Join Call", "hehehe", "lolol",
+        ]
+        let known: Set<String> = ["start", "join", "call", "pm"]
+        let terms = ScreenContext.terms(in: strings, isKnownWord: known.contains)
+        for filler in ["Lol", "Hahaha", "Noo", "Lmao", "Sooooooo", "Woowww", "hehehe", "lolol"] {
+            XCTAssertFalse(terms.contains(filler), filler)
+        }
+        let phrases = ScreenContext.phrases(in: strings, containing: terms)
+        XCTAssertEqual(phrases, ["Marta Quell", "Tobias Wren", "Ines Varga"])
+        let hints = ScreenContext.hints(from: terms, phrases: phrases)
+        XCTAssertTrue(hints.contains("Ines Varga"))
+        XCTAssertFalse(hints.contains { $0.hasPrefix("Start") || $0.hasPrefix("Join") })
+    }
+
+    func testChatFillerLeavesNamesAlone() {
+        for filler in ["lol", "LOL", "Lmao", "Hahaha", "ahah", "Noo", "Sooooooo", "Woowww", "Hiii", "OMG", "lolol"] {
+            XCTAssertTrue(ScreenContext.isChatFiller(filler), filler)
+        }
+        for name in ["Noah", "Ho", "Ha", "Sol", "Matt", "Aaron", "Lola", "Hannah", "Kylan", "Oleg"] {
+            XCTAssertFalse(ScreenContext.isChatFiller(name), name)
+        }
+    }
+
     func testHintsUseTheWholeCompanyName() {
         let strings = ["Reply to Nikki about the Arx Media deal", "PocketFM and Arx Media, Inworld"]
         let terms = ["Nikki", "Arx", "PocketFM", "Inworld"]

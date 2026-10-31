@@ -30,6 +30,35 @@ enum ScreenContext {
         return Set(DateFormatter().monthSymbols + DateFormatter().weekdaySymbols + languages + regions + nationalities)
     }()
 
+    /// Chat filler such as "Lol", "Hahaha" or "Sooooooo". The spell checker doesn't know these, so they would pass as
+    /// names, and a hint is something Inworld can read back as if it were said.
+    static func isChatFiller(_ word: String) -> Bool {
+        let lower = word.lowercased()
+        if fillerWords.contains(lower) { return true }
+        // Stretched words: "Sooooooo", "Woowww" and "Noo" are "so", "wow" and "no".
+        var squeezed = ""
+        for character in lower where character != squeezed.last { squeezed.append(character) }
+        if squeezed != lower, fillerWords.contains(squeezed) || stretchedWords.contains(squeezed) { return true }
+        // Laughs: "haha", "hehehe", "ahah", "lolol". Two beats at least, so names such as "Ho" stay.
+        return lower.wholeMatch(of: /(?:h[aeiou]|[aeiou]h){2,}h?|(?:lo)+l/) != nil
+    }
+
+    private static let fillerWords: Set<String> = [
+        "lol", "lmao", "lmfao", "rofl", "omg", "omfg", "idk", "tbh", "btw", "brb", "ttyl", "smh", "imo", "imho", "fyi",
+        "jk", "ty", "thx", "np", "nvm", "wtf", "ok", "okay", "kk", "yay", "yup", "yep", "nope", "nah", "ugh", "hmm", "mhm",
+        "aww", "ooh", "oops", "eww", "wow", "whoa", "yikes", "oof", "bruh", "lolz", "xoxo",
+    ]
+    /// Ordinary words people stretch in chat. Only a stretched spelling counts, so "Noah" or "Sol" never match.
+    private static let stretchedWords: Set<String> = ["no", "so", "yes", "ya", "yo", "hi", "hey", "oh", "ah", "aw", "go", "me", "love", "please", "wow"]
+
+    /// Words that start a control's label, such as "Start FaceTime" or "Join Call". A run of capitals starting with
+    /// one of these is a button, not a name.
+    private static let actionWords: Set<String> = [
+        "start", "stop", "join", "leave", "call", "send", "reply", "forward", "share", "open", "close", "show", "hide",
+        "add", "remove", "delete", "edit", "new", "search", "invite", "mute", "unmute", "record", "play", "pause", "save",
+        "copy", "download", "upload", "view", "turn", "enable", "disable", "mark", "pin", "unpin", "react", "more",
+    ]
+
     /// Missing key means on, matching the Settings toggle's default.
     static var isEnabled: Bool {
         guard UserDefaults.standard.object(forKey: enabledKey) != nil else { return true }
@@ -124,7 +153,7 @@ enum ScreenContext {
         scan: for string in strings {
             for piece in string.split(whereSeparator: { $0.isWhitespace || $0 == "/" }) {
                 guard let word = cleaned(piece), seen.insert(word).inserted,
-                      !calendarWords.contains(word), let needsCheck = kind(of: word) else { continue }
+                      !calendarWords.contains(word), !isChatFiller(word), let needsCheck = kind(of: word) else { continue }
                 let listed = needsCheck && isListed(word.lowercased(), in: wordList)
                 candidates.append(Candidate(word: word, needsCheck: needsCheck, listed: listed))
                 if candidates.count >= maximumCandidates { break scan }
@@ -179,6 +208,8 @@ enum ScreenContext {
         for string in strings {
             var run: [String] = []
             func flush() {
+                // "Start FaceTime" is a button. Without its verb, one word is left, which is no phrase.
+                while let first = run.first, actionWords.contains(first.lowercased()) { run.removeFirst() }
                 if (2...4).contains(run.count), run.contains(where: termSet.contains) {
                     let phrase = run.joined(separator: " ")
                     if seen.insert(phrase).inserted { phrases.append(phrase) }
@@ -611,7 +642,9 @@ enum ScreenContext {
             roots.append(window)
         }
 
-        let attributes = [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXChildrenAttribute] as CFArray
+        let attributes = [
+            kAXRoleAttribute, kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXChildrenAttribute,
+        ] as CFArray
         var visited = Set<AXUIElement>()
         var strings: [String] = []
         var characters = 0
@@ -628,7 +661,9 @@ enum ScreenContext {
                 var values: CFArray?
                 guard AXUIElementCopyMultipleAttributeValues(node, attributes, [], &values) == .success,
                       let values = values as? [AnyObject] else { continue }
-                for value in values {
+                // Menu items list what the app can do ("FaceTime Video", "FaceTime Audio"), not what's on screen.
+                if let role = values.first as? String, menuRoles.contains(role) { continue }
+                for value in values.dropFirst() {
                     if let string = value as? String, !string.isEmpty {
                         let piece = String(string.prefix(2_000))
                         strings.append(piece)
@@ -642,6 +677,9 @@ enum ScreenContext {
         }
         return WindowText(strings: strings, nearCount: nearCount)
     }
+
+    /// Only the items. Messages keeps real content inside a menu-type container, so containers are still read.
+    private static let menuRoles: Set<String> = [kAXMenuItemRole, kAXMenuBarItemRole]
 
     private static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
